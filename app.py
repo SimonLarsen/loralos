@@ -3,29 +3,80 @@ from dash import html, dcc
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
-import json
+import plotly.graph_objects as go
+from flask_caching import Cache
 
+import json
+import numpy as np
+import pandas as pd
+from operator import itemgetter
 from wcs_height_map import WCSHeightMap
 from wms_image import WMSImage
 import pyproj
-import plotly.graph_objects as go
-import numpy as np
 from fresnel import fresnel_zone_radius
-import pandas as pd
 
 
-def make_numeric_input(
-    id: str, label: str, unit: str, min: float, max: float, value: float
-) -> html.Div:
-    return html.Div([
-        dbc.Label(label, html_for=id),
-        dbc.InputGroup([
-            dbc.Input(id=id, type="number", min=min, max=max, value=value),
-            dbc.InputGroupText(unit),
-        ]),
-    ], className="mb-3")
+with open("config.json", "r") as fp:
+    config = json.load(fp)
+
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.ZEPHYR], prevent_initial_callbacks=True)
+app.title = "LoRaWAN line of sight helper"
+cache = Cache(app.server, config={
+    "CACHE_TYPE": "filesystem",
+    "CACHE_DIR": config["flask"]["cache_dir"]
+})
 
 
+@cache.memoize(timeout=600)
+def generate(lon1, lat1, lon2, lat2, frequency, spm, padding):
+    geod = pyproj.Geod(ellps="clrk66")
+    azi1, azi2, dist = geod.inv(lon1, lat1, lon2, lat2)
+    max_r = fresnel_zone_radius(dist / 2.0, dist / 2.0, frequency) + 2.0 * padding
+    npts_x = round(dist * spm)
+    npts_y = int(round(max_r * spm * 0.5) * 2 + 1)
+
+    inter = geod.inv_intermediate(lon1, lat1, lon2, lat2, npts=npts_x, initial_idx=0, terminus_idx=0)
+
+    data = []
+    for ilon, ilat, in zip(inter.lons, inter.lats):
+        azi_fwd, azi_bwd, d1 = geod.inv(lon1, lat1, ilon, ilat)
+        flon1, flat1, faz1 = geod.fwd(ilon, ilat, azi_bwd - 90.0, max_r)
+        flon2, flat2, faz2 = geod.fwd(ilon, ilat, azi_bwd + 90.0, max_r)
+
+        rinter = geod.inv_intermediate(
+            flon1, flat1, flon2, flat2,
+            npts=npts_y,
+            initial_idx=0,
+            terminus_idx=0,
+        )
+
+        for i, lon, lat in zip(range(npts_y), rinter.lons, rinter.lats):
+            h = heightmap.get_height(lon, lat)
+            pixel = photo.get_pixel(lon, lat)
+            if npts_y > 0:
+                offset = (i / (npts_y - 1)) * max_r * 2 - max_r
+            else:
+                offset = 0
+
+            data.append(dict(
+                d1=d1,
+                offset=offset,
+                lon=lon,
+                lat=lat1,
+                height=h,
+                color=pixel,
+            ))
+        
+    return dict(
+        dist=dist,
+        npts_x=npts_x,
+        npts_y=npts_y,
+        max_r=max_r,
+        data=data
+    )
+
+
+@cache.memoize(timeout=600)
 def generate_mesh_indices(n: int, m: int):
     t1, t2, t3 = [], [], []
     for i in range(n - 1):
@@ -56,15 +107,25 @@ def placeholder_figure(text: str, height: int = 100):
                 xref="paper",
                 yref="paper",
                 showarrow=False,
-                font_size=18
+                font_size=14,
+                font_color="#808080"
             )
         ]
     )
     return figure
 
 
-with open("config.json", "r") as fp:
-    config = json.load(fp)
+def make_numeric_input(
+    id: str, label: str, unit: str, min: float, max: float, value: float
+) -> html.Div:
+    return html.Div([
+        dbc.Label(label, html_for=id),
+        dbc.InputGroup([
+            dbc.Input(id=id, type="number", min=min, max=max, value=value),
+            dbc.InputGroupText(unit),
+        ]),
+    ], className="mb-3")
+
 
 stations = pd.read_csv(config["stations"]["path"])
 
@@ -89,9 +150,6 @@ numeric_inputs = [
     dict(id="spm", label="Samples per meter", unit="per meter", min=0.01, max=2, value=0.5),
     dict(id="padding", label="View padding", unit="m", min=0, max=100, value=10),
 ]
-
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.LUMEN])
-app.title = "LoRaWAN line of sight helper"
 
 navbar = dbc.NavbarSimple(
     brand="LoRaWAN line of sight helper",
@@ -129,9 +187,9 @@ container = dbc.Container(
             dbc.Col(
                 [
                     html.H2("Height curve"),
-                    html.Hr(),
+                    html.Div(dcc.Loading(dcc.Graph(id="graph-2d", figure=placeholder_figure("No results computed yet"))), className="border mb-3"),
                     html.H2("3D terrain"),
-                    html.Div(dcc.Loading(dcc.Graph(id="graph-3d")), className="border")
+                    html.Div(dcc.Loading(dcc.Graph(id="graph-3d", figure=placeholder_figure("No results computed yet"))), className="border")
                 ],
                 md=9,
                 lg=10,
@@ -143,6 +201,16 @@ container = dbc.Container(
 )
 
 app.layout = html.Div([navbar, container])
+
+
+@app.callback(
+    Output("graph-2d", "figure"),
+    Input("submit", "n_clicks")
+)
+def update_graph_2d(
+    n_clicks: int
+):
+    raise PreventUpdate
 
 
 @app.callback(
@@ -169,70 +237,36 @@ def update_graph_3d(
     padding: float,
 ):
     if n_clicks is None or n_clicks == 0:
-        return placeholder_figure("")
+        return placeholder_figure("No results.")
 
     if not enable_3d_graph:
-        return placeholder_figure("3D terrain generation is disabled.")
+        return placeholder_figure("3D terrain generation is disabled")
     
     # Get location coordinates
     lon1, lat1 = stations.query("station == @gateway_id").iloc[0][["lon", "lat"]]
     lon2, lat2 = stations.query("station == @node_id").iloc[0][["lon", "lat"]]
 
-    geod = pyproj.Geod(ellps="clrk66")
-    azi1, azi2, dist = geod.inv(lon1, lat1, lon2, lat2)
-    max_r = fresnel_zone_radius(dist / 2.0, dist / 2.0, frequency) + 2.0 * padding
-    npts_x = round(dist * spm)
-    npts_y = round(max_r * spm)
-
-    inter = geod.inv_intermediate(lon1, lat1, lon2, lat2, npts=npts_x, initial_idx=0, terminus_idx=0)
-    data = []
-
-    for ilon, ilat in zip(inter.lons, inter.lats):
-        azi_fwd, azi_bwd, d1 = geod.inv(lon1, lat1, ilon, ilat)
-        d2 = np.clip(dist - d1, 0, np.inf)
-
-        r = fresnel_zone_radius(d1, d2, 0.868)
-        flon1, flat1, faz1 = geod.fwd(ilon, ilat, azi_fwd - 90.0, max_r)
-        flon2, flat2, faz2 = geod.fwd(ilon, ilat, azi_fwd + 90.0, max_r)
-
-        rinter = geod.inv_intermediate(
-            flon1, flat1, flon2, flat2,
-            npts=npts_y,
-            initial_idx=0,
-            terminus_idx=0,
-        )
-
-        for i, lon, lat in zip(range(npts_y), rinter.lons, rinter.lats):
-            h = heightmap.get_height(lon, lat)
-            pixel = photo.get_pixel(lon, lat)
-
-            color = "rgb(" + ",".join(map(str, pixel)) + ")"
-            offset = (i / (npts_y - 1)) * max_r * 2 - max_r
-
-            data.append(dict(
-                d1=d1,
-                offset=offset,
-                lon=lon,
-                lat=lat1,
-                height=h,
-                color=color,
-            ))
-    
-
-    data = pd.DataFrame(data)
-    t1, t2, t3 = generate_mesh_indices(npts_x, npts_y)
+    result = generate(lon1, lat1, lon2, lat2, frequency, spm, padding)
+    data = result["data"]
+    dist = result["dist"]
+    t1, t2, t3 = generate_mesh_indices(result["npts_x"], result["npts_y"])
+    color_rgb = ["#{:02x}{:02x}{:02x}".format(*p["color"]) for p in data]
 
     figure = go.Figure()
     figure.add_trace(
         go.Mesh3d(
-            x=data["d1"],
-            y=data["offset"],
-            z=data["height"],
+            x=list(map(itemgetter("d1"), data)),
+            y=list(map(itemgetter("offset"), data)),
+            z=list(map(itemgetter("height"), data)),
             i=t1,
             j=t2,
             k=t3,
-            vertexcolor=data["color"],
-            customdata=data[["lat", "lon"]],
+            vertexcolor=color_rgb,
+            lighting=dict(
+                ambient=1.0,
+                diffuse=0.0,
+                specular=0.0
+            )
         )
     )
 
@@ -259,12 +293,12 @@ def update_graph_3d(
 
     figure.update_layout(
         margin=dict(t=0, r=0, b=0, l=0),
+        height=500,
         scene=dict(
             aspectmode="data",
             camera_projection_type="orthographic",
             camera_eye=dict(x=0, y=-2.5, z=2.5),
         ),
-        height=500,
     )
 
     return figure
