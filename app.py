@@ -28,51 +28,58 @@ cache = Cache(app.server, config={
 
 
 @cache.memoize(timeout=600)
-def generate(lon1, lat1, lon2, lat2, frequency, spm, padding):
+def generate_data(lon1, lat1, lon2, lat2, frequency, spm, compute_3d=False, padding=None):
     geod = pyproj.Geod(ellps="clrk66")
     azi1, azi2, dist = geod.inv(lon1, lat1, lon2, lat2)
-    max_r = fresnel_zone_radius(dist / 2.0, dist / 2.0, frequency) + 2.0 * padding
     npts_x = round(dist * spm)
-    npts_y = int(round(max_r * spm * 0.5) * 2 + 1)
-
     inter = geod.inv_intermediate(lon1, lat1, lon2, lat2, npts=npts_x, initial_idx=0, terminus_idx=0)
 
-    data = []
-    for ilon, ilat, in zip(inter.lons, inter.lats):
-        azi_fwd, azi_bwd, d1 = geod.inv(lon1, lat1, ilon, ilat)
-        flon1, flat1, faz1 = geod.fwd(ilon, ilat, azi_bwd - 90.0, max_r)
-        flon2, flat2, faz2 = geod.fwd(ilon, ilat, azi_bwd + 90.0, max_r)
+    if not compute_3d:
+        npts_y = 1
 
-        rinter = geod.inv_intermediate(
-            flon1, flat1, flon2, flat2,
-            npts=npts_y,
-            initial_idx=0,
-            terminus_idx=0,
-        )
+        out_lon = inter.lons
+        out_lat = inter.lats
+        out_d1 = np.linspace(0, dist, npts_x)
+        out_offset = None
+    else:
+        out_lon = []
+        out_lat = []
+        out_d1 = []
+        out_offset = []
 
-        for i, lon, lat in zip(range(npts_y), rinter.lons, rinter.lats):
-            h = heightmap.get_height(lon, lat)
-            pixel = photo.get_pixel(lon, lat)
-            if npts_y > 0:
-                offset = (i / (npts_y - 1)) * max_r * 2 - max_r
-            else:
-                offset = 0
+        max_r = fresnel_zone_radius(dist / 2.0, dist / 2.0, frequency) + 2.0 * padding
+        npts_y = int(round(max_r * spm * 0.5) * 2 + 1)
 
-            data.append(dict(
-                d1=d1,
-                offset=offset,
-                lon=lon,
-                lat=lat1,
-                height=h,
-                color=pixel,
-            ))
-        
+        for ilon, ilat, in zip(inter.lons, inter.lats):
+            azi_fwd, azi_bwd, d1 = geod.inv(lon1, lat1, ilon, ilat)
+            flon1, flat1, faz1 = geod.fwd(ilon, ilat, azi_bwd - 90.0, max_r)
+            flon2, flat2, faz2 = geod.fwd(ilon, ilat, azi_bwd + 90.0, max_r)
+
+            rinter = geod.inv_intermediate(
+                flon1, flat1, flon2, flat2,
+                npts=npts_y,
+                initial_idx=0,
+                terminus_idx=0,
+            )
+
+            out_lon.extend(rinter.lons)
+            out_lat.extend(rinter.lats)
+            out_d1.extend(np.repeat(d1, npts_y))
+            out_offset.extend(np.linspace(-max_r, max_r, npts_y))
+
+    out_height = [heightmap.get_height(lon, lat) for lon, lat in zip(out_lon, out_lat)]
+    out_color = [photo.get_pixel(lon, lat) for lon, lat in zip(out_lon, out_lat)]
+
     return dict(
         dist=dist,
         npts_x=npts_x,
         npts_y=npts_y,
-        max_r=max_r,
-        data=data
+        lon=out_lon,
+        lat=out_lat,
+        d1=out_d1,
+        offset=out_offset,
+        height=out_height,
+        color=out_color
     )
 
 
@@ -205,12 +212,46 @@ app.layout = html.Div([navbar, container])
 
 @app.callback(
     Output("graph-2d", "figure"),
-    Input("submit", "n_clicks")
+    Input("submit", "n_clicks"),
+    State("gateway_id", "value"),
+    State("node_id", "value"),
+    State("frequency", "value"),
+    State("gateway_height", "value"),
+    State("node_height", "value"),
+    State("spm", "value")
 )
 def update_graph_2d(
-    n_clicks: int
+    n_clicks: int,
+    gateway_id: str,
+    node_id: str,
+    frequency: float,
+    gateway_height: float,
+    node_height: float,
+    spm: float
 ):
-    raise PreventUpdate
+    if n_clicks is None or n_clicks == 0:
+        return placeholder_figure("This shouldn't happen. :(")
+    
+    # Get location coordinates
+    lon1, lat1 = stations.query("station == @gateway_id").iloc[0][["lon", "lat"]]
+    lon2, lat2 = stations.query("station == @node_id").iloc[0][["lon", "lat"]]
+
+    result = generate_data(lon1, lat1, lon2, lat2, frequency, spm, compute_3d=False)
+    
+    figure = go.Figure()
+    figure.add_trace(
+        go.Scatter(
+            x=result["d1"],
+            y=result["height"],
+            mode="lines"
+        )
+    )
+
+    figure.update_layout(
+        height=250,
+        margin=dict(t=0, r=0, b=0, l=0)
+    )
+    return figure
 
 
 @app.callback(
@@ -237,7 +278,7 @@ def update_graph_3d(
     padding: float,
 ):
     if n_clicks is None or n_clicks == 0:
-        return placeholder_figure("No results.")
+        return placeholder_figure("This shouldn't happen. :(")
 
     if not enable_3d_graph:
         return placeholder_figure("3D terrain generation is disabled")
@@ -246,18 +287,17 @@ def update_graph_3d(
     lon1, lat1 = stations.query("station == @gateway_id").iloc[0][["lon", "lat"]]
     lon2, lat2 = stations.query("station == @node_id").iloc[0][["lon", "lat"]]
 
-    result = generate(lon1, lat1, lon2, lat2, frequency, spm, padding)
-    data = result["data"]
+    result = generate_data(lon1, lat1, lon2, lat2, frequency, spm, compute_3d=True, padding=padding)
     dist = result["dist"]
     t1, t2, t3 = generate_mesh_indices(result["npts_x"], result["npts_y"])
-    color_rgb = ["#{:02x}{:02x}{:02x}".format(*p["color"]) for p in data]
+    color_rgb = ["#{:02x}{:02x}{:02x}".format(*c) for c in result["color"]]
 
     figure = go.Figure()
     figure.add_trace(
         go.Mesh3d(
-            x=list(map(itemgetter("d1"), data)),
-            y=list(map(itemgetter("offset"), data)),
-            z=list(map(itemgetter("height"), data)),
+            x=result["d1"],
+            y=result["offset"],
+            z=result["height"],
             i=t1,
             j=t2,
             k=t3,
@@ -304,5 +344,10 @@ def update_graph_3d(
     return figure
 
 
-if __name__ == "__main__":
+def main():
+    cache.clear()
     app.run_server(debug=True)
+
+
+if __name__ == "__main__":
+    main()
