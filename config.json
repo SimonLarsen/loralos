@@ -1,0 +1,25 @@
+{
+    "dashboard": {
+        "theme": "zephyr"
+    },
+    "flask": {
+        "cache_dir": "flaskcache"
+    },
+    "heightmap": {
+        "url": "",
+        "token": "",
+        "layer": "",
+        "tile_size": 1000,
+        "resolution": 1000
+    },
+    "photo": {
+        "url": "",
+        "token": "",
+        "layer": "",
+        "tile_size": 1000,
+        "resolution": 1000
+    },
+    "stations": {
+        "path": ""
+    }
+}

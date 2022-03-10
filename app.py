@@ -19,12 +19,31 @@ from fresnel import fresnel_zone_radius
 with open("config.json", "r") as fp:
     config = json.load(fp)
 
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.ZEPHYR], prevent_initial_callbacks=True)
+theme_url = getattr(dbc.themes, config["dashboard"]["theme"].upper())
+app = dash.Dash(__name__, external_stylesheets=[theme_url], prevent_initial_callbacks=True)
 app.title = "LoRaWAN line of sight helper"
+
 cache = Cache(app.server, config={
     "CACHE_TYPE": "filesystem",
     "CACHE_DIR": config["flask"]["cache_dir"]
 })
+
+stations = pd.read_csv(config["stations"]["path"])
+
+heightmap = WCSHeightMap(
+    url=config["heightmap"]["url"] + "&token=" + config["heightmap"]["token"],
+    layer=config["heightmap"]["layer"],
+    tile_size=config["heightmap"]["tile_size"],
+    resolution=config["heightmap"]["resolution"]
+)
+
+photo = WMSImage(
+    url=config["photo"]["url"] + "&token=" + config["photo"]["token"],
+    layer=config["photo"]["layer"],
+    tile_size=config["photo"]["tile_size"],
+    resolution=config["photo"]["resolution"]
+)
+
 
 
 @cache.memoize(timeout=600)
@@ -133,22 +152,6 @@ def make_numeric_input(
         ]),
     ], className="mb-3")
 
-
-stations = pd.read_csv(config["stations"]["path"])
-
-heightmap = WCSHeightMap(
-    url=config["heightmap"]["url"] + "&token=" + config["heightmap"]["token"],
-    layer=config["heightmap"]["layer"],
-    tile_size=config["heightmap"]["tile_size"],
-    resolution=config["heightmap"]["resolution"]
-)
-
-photo = WMSImage(
-    url=config["photo"]["url"] + "&token=" + config["photo"]["token"],
-    layer=config["photo"]["layer"],
-    tile_size=config["photo"]["tile_size"],
-    resolution=config["photo"]["resolution"]
-)
 
 numeric_inputs = [
     dict(id="gateway_height", label="Gateway height", unit="m", min=0, max=100, value=12),
