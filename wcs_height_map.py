@@ -2,6 +2,7 @@ import pyproj
 from owslib.wcs import WebCoverageService
 import rasterio
 import os.path
+from typing import List
 
 
 FORMAT_ENDINGS = {
@@ -33,29 +34,14 @@ class WCSHeightMap:
             always_xy=True
         )
         self.cached_file = None
-        self.cached_bbox = None
-        self.band = None
-
-    def point_in_bounding_box(self, x: float, y: float) -> bool:
-        return (
-            self.cached_bbox is not None
-            and x >= self.cached_bbox[0]
-            and x <= self.cached_bbox[2]
-            and y >= self.cached_bbox[1]
-            and y <= self.cached_bbox[3]
-        )
+        self.cached_image = None
 
     def load_tile(self, x: float, y: float) -> None:
-        if self.point_in_bounding_box(x, y):
-            return
-
         tx = int(x // self.tile_size) * self.tile_size
         ty = int(y // self.tile_size) * self.tile_size
-
         bbox = (tx, ty, tx + self.tile_size, ty + self.tile_size)
 
         cache_file = f"mapcache/wcs_{self.layer}_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}_{self.tile_size}_{self.resolution}.{FORMAT_ENDINGS[self.format]}"
-
         if not os.path.exists(cache_file):
             res = self.wcs.getCoverage(
                 identifier=self.layer,
@@ -71,12 +57,36 @@ class WCSHeightMap:
                 fp.write(data)
 
         self.cached_file = rasterio.open(cache_file)
-        self.band = self.cached_file.read(1)
-        self.cached_bbox = bbox
+        self.cached_image = self.cached_file.read(1)
 
-    def get_height(self, lon: float, lat: float) -> float:
-        x, y = self.trans.transform(lon, lat)
-        self.load_tile(x, y)
+    def get_heights(
+        self,
+        lons: List[float],
+        lats: List[float]
+    ) -> List[float]:
+        points = [None] * len(lons)
+        tiles = [None] * len(lons)
+        for i in range(len(lons)):
+            x, y = self.trans.transform(lons[i], lats[i])
+            points[i] = (x, y)
 
-        row, col = self.cached_file.index(x, y)
-        return self.band[row, col]
+            tx = int(x // self.tile_size * self.tile_size)
+            ty = int(y // self.tile_size * self.tile_size)
+            tiles[i] = (tx, ty)
+        
+        order = list(range(len(lons)))
+        order.sort(key=lambda i: tiles[i])
+    
+        prev_tile = None
+        out = [None] * len(lons)
+        for i in order:
+            tile = tiles[i]
+            if tile != prev_tile:
+                self.load_tile(*tile)
+                prev_tile = tile
+            
+            x, y = points[i]
+            row, col = self.cached_file.index(x, y)
+            out[i] = self.cached_image[row, col]
+
+        return out

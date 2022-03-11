@@ -1,7 +1,7 @@
 from owslib.wms import WebMapService
 import pyproj
 from PIL import Image
-from typing import Tuple
+from typing import Tuple, List
 import os.path
 
 
@@ -35,29 +35,14 @@ class WMSImage:
             self.crs,
             always_xy=True
         )
-        self.cached_bbox = None
-        self.image = None
+        self.cached_image = None
     
-    def point_in_bounding_box(self, x: float, y: float) -> bool:
-        return (
-            self.cached_bbox is not None
-            and x >= self.cached_bbox[0]
-            and x <= self.cached_bbox[2]
-            and y >= self.cached_bbox[1]
-            and y <= self.cached_bbox[3]
-        )
-
     def load_tile(self, x: float, y: float) -> None:
-        if self.point_in_bounding_box(x, y):
-            return
-
-        tx = int(x // self.tile_size) * self.tile_size
-        ty = int(y // self.tile_size) * self.tile_size
-
+        tx = int(x // self.tile_size * self.tile_size)
+        ty = int(y // self.tile_size * self.tile_size)
         bbox = (tx, ty, tx + self.tile_size, ty + self.tile_size)
 
         cache_file = f"mapcache/wms_{self.layer}_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}_{self.tile_size}_{self.resolution}.{FORMAT_ENDINGS[self.format]}"
-
         if not os.path.exists(cache_file):
             res = self.wms.getmap(
                 layers=[self.layer],
@@ -71,14 +56,37 @@ class WMSImage:
                 fp.write(res.read())
 
         image = Image.open(cache_file)
-        self.image = image.load()
-        self.cached_bbox = bbox
+        self.cached_image = image.load()
 
-    def get_pixel(self, lon: float, lat: float) -> Tuple[float, float, float]:
-        x, y = self.trans.transform(lon, lat)
-        self.load_tile(x, y)
+    def get_pixels(
+        self,
+        lons: List[float],
+        lats: List[float]
+    ) -> List[Tuple[float, float, float]]:
+        points = [None] * len(lons)
+        tiles = [None] * len(lons)
+        for i in range(len(lons)):
+            x, y = self.trans.transform(lons[i], lats[i])
+            points[i] = (x, y)
 
-        bbox = self.cached_bbox
-        px = round((x - bbox[0]) / self.tile_size * (self.resolution - 1))
-        py = round((1.0 - (y - bbox[1]) / self.tile_size) * (self.resolution - 1))
-        return self.image[px, py]
+            tx = int(x // self.tile_size * self.tile_size)
+            ty = int(y // self.tile_size * self.tile_size)
+            tiles[i] = (tx, ty)
+        
+        order = list(range(len(lons)))
+        order.sort(key=lambda i: tiles[i])
+
+        prev_tile = None
+        out = [None] * len(lons)
+        for i in order:
+            tile = tiles[i]
+            if tile != prev_tile:
+                self.load_tile(*tile)
+                prev_tile = tile
+            
+            x, y = points[i]
+            px = round((x - tile[0]) / self.tile_size * (self.resolution - 1))
+            py = round((1.0 - (y - tile[1]) / self.tile_size) * (self.resolution - 1))
+            out[i] = self.cached_image[px, py]
+        
+        return out

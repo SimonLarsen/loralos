@@ -51,7 +51,7 @@ def generate_data(lon1, lat1, lon2, lat2, frequency, spm, padding):
         resolution=int(config["heightmap"]["resolution"])
     )
 
-    photo = WMSImage(
+    image = WMSImage(
         url=config["image"]["url"] + "&token=" + config["image"]["token"],
         layer=config["image"]["layer"],
         tile_size=int(config["image"]["tile_size"]),
@@ -86,8 +86,8 @@ def generate_data(lon1, lat1, lon2, lat2, frequency, spm, padding):
         out_d1.extend(np.repeat(d1, npts_y))
         out_offset.extend(np.linspace(-max_r, max_r, npts_y))
 
-    out_height = [heightmap.get_height(lon, lat) for lon, lat in zip(out_lon, out_lat)]
-    out_color = [photo.get_pixel(lon, lat) for lon, lat in zip(out_lon, out_lat)]
+    out_height = heightmap.get_heights(out_lon, out_lat)
+    out_color = image.get_pixels(out_lon, out_lat)
 
     height_start = out_height[int(npts_y) // 2]
     height_end = out_height[int((npts_x - 1) * npts_y + npts_y // 2)]
