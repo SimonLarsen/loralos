@@ -2,6 +2,10 @@
     "dashboard": {
         "theme": "zephyr"
     },
+    "fresnel": {
+        "steps_x": 40,
+        "steps_y": 12
+    },
     "flask": {
         "cache_dir": "flaskcache"
     },
