@@ -16,6 +16,10 @@ import pyproj
 from fresnel import fresnel_zone_radius
 
 
+class DistanceExceededError(Exception):
+    pass
+
+
 with open("config.json", "r") as fp:
     config = json.load(fp)
 
@@ -32,6 +36,11 @@ stations = pd.read_csv(config["stations"]["path"])
 
 @cache.memoize(timeout=600)
 def generate_data(lon1, lat1, lon2, lat2, frequency, spm, padding):
+    geod = pyproj.Geod(ellps="clrk66")
+    azi1, azi2, dist = geod.inv(lon1, lat1, lon2, lat2)
+    if dist > 5000:
+        raise DistanceExceededError
+
     heightmap = WCSHeightMap(
         url=config["heightmap"]["url"] + "&token=" + config["heightmap"]["token"],
         layer=config["heightmap"]["layer"],
@@ -45,9 +54,6 @@ def generate_data(lon1, lat1, lon2, lat2, frequency, spm, padding):
         tile_size=config["photo"]["tile_size"],
         resolution=config["photo"]["resolution"]
     )
-
-    geod = pyproj.Geod(ellps="clrk66")
-    azi1, azi2, dist = geod.inv(lon1, lat1, lon2, lat2)
 
     max_r = fresnel_zone_radius(dist / 2.0, dist / 2.0, frequency) + 2.0 * padding
     npts_x = round(dist * spm)
@@ -115,7 +121,7 @@ def generate_mesh_indices(n: int, m: int):
     return t1, t2, t3
 
 
-def placeholder_figure(text: str, height: int = 100):
+def placeholder_figure(text: str = "", height: int = 100):
     figure = go.Figure()
     figure.update_layout(
         height=height,
@@ -137,7 +143,7 @@ def placeholder_figure(text: str, height: int = 100):
     return figure
 
 
-def make_numeric_input(
+def sidebar_numeric_input(
     id: str, label: str, unit: str, min: float, max: float, value: float
 ) -> html.Div:
     return html.Div([
@@ -150,8 +156,6 @@ def make_numeric_input(
 
 
 numeric_inputs = [
-    dict(id="gateway_height", label="Gateway height", unit="m", min=0, max=100, value=12),
-    dict(id="node_height", label="Node height", unit="m", min=0, max=100, value=2),
     dict(id="frequency", label="Frequency", unit="GHz", min=0, max=10, value=0.858),
     dict(id="spm", label="Samples per meter", unit="per meter", min=0.01, max=2, value=0.5),
     dict(id="padding", label="View padding", unit="m", min=0, max=100, value=10),
@@ -168,6 +172,7 @@ navbar = dbc.NavbarSimple(
 options_stations = [dict(label=id, value=id) for id in stations.station]
 sidebar = dbc.Form(
     [
+        html.H5("Session settings"),
         html.Div([
             dbc.Label("Gateway location", html_for="gateway_id"),
             dbc.Select(id="gateway_id", options=options_stations, value="FGV"),
@@ -177,13 +182,14 @@ sidebar = dbc.Form(
             dbc.Select(id="node_id", options=options_stations, value="FGD"),
         ], className="mb-3"),
         html.Div([
-            make_numeric_input(**args)
+            sidebar_numeric_input(**args)
             for args in numeric_inputs
         ]),
-        dbc.Button("Submit", id="submit", type="submit", className="mt-3"),
-        dcc.Loading(html.Div(id="data-loading"))
+        dbc.Button("Update", id="session_update", type="submit", className="mb-3"),
+        dbc.Alert(id="sidebar_error", color="danger", is_open=False),
+        dcc.Loading(html.Div(id="data_loading")),
     ],
-    className="mt-3"
+    className="pt-3"
 ),
 
 container = dbc.Container(
@@ -192,30 +198,44 @@ container = dbc.Container(
             dbc.Col(sidebar, md=3, lg=2),
             dbc.Col(
                 [
+                    html.H5("Fresnel zone"),
                     dbc.Row([
                         dbc.Col([
-                            html.H3("Height curve"),
+                            dbc.Label("Gateway height", width="auto"),
+                            dbc.InputGroup([
+                                dbc.Input(id="gateway_height", type="number", value=12.0),
+                                dbc.InputGroupText("m")
+                            ])
+                        ], lg=6, xl=2),
+                        dbc.Col([
+                            dbc.Label("Node height", width="auto"),
+                            dbc.Input(id="node_height", type="number", value=2.0)
+                        ], lg=6, xl=2)
+                    ], className="mb-3"),
+                    dbc.Row([
+                        dbc.Col([
+                            html.H5("Height curve"),
                             html.Div(
-                                dcc.Loading(dcc.Graph(id="graph-2d", figure=placeholder_figure("No results computed yet", 250))),
+                                dcc.Loading(dcc.Graph(id="graph-2d", figure=placeholder_figure("", 250))),
                                 className="border"
                             ),
                         ], lg=9),
                         dbc.Col([
-                            html.H3("Cross section"),
+                            html.H5("Cross section"),
                             html.Div(
-                                dcc.Loading(dcc.Graph(id="graph-cross", figure=placeholder_figure("Hover over height curve to show cross section", 250))),
+                                dcc.Loading(dcc.Graph(id="graph-cross", figure=placeholder_figure("", 250))),
                                 className="border"
                             ),
                             html.P(id="test")
                         ], lg=3)
                     ], className="mb-3"),
-                    html.H3("3D terrain"),
+                    html.H5("3D terrain"),
                     dbc.Switch(id="enable-3d-graph", label="Show 3D terrain", value=False),
-                    html.Div(dcc.Loading(dcc.Graph(id="graph-3d", figure=placeholder_figure("No results computed yet"))), className="border")
+                    html.Div(dcc.Loading(dcc.Graph(id="graph-3d", figure=placeholder_figure())), className="border")
                 ],
                 md=9,
                 lg=10,
-                className="mt-3"
+                className="pt-3"
             ),
         ]
     ),
@@ -227,13 +247,13 @@ app.layout = html.Div([navbar, container, dcc.Store(id="data")])
 
 @app.callback(
     Output("data", "data"),
-    Output("data-loading", "children"),
-    Input("submit", "n_clicks"),
+    Output("data_loading", "children"),
+    Output("sidebar_error", "children"),
+    Output("sidebar_error", "is_open"),
+    Input("session_update", "n_clicks"),
     State("gateway_id", "value"),
     State("node_id", "value"),
     State("frequency", "value"),
-    State("gateway_height", "value"),
-    State("node_height", "value"),
     State("spm", "value"),
     State("padding", "value")
 )
@@ -242,22 +262,22 @@ def update_data(
     gateway_id: str,
     node_id: str,
     frequency: float,
-    gateway_height: float,
-    node_height: float,
     spm: float,
     padding: float
 ):
     lon1, lat1 = stations.query("station == @gateway_id").iloc[0][["lon", "lat"]]
     lon2, lat2 = stations.query("station == @node_id").iloc[0][["lon", "lat"]]
 
-    result = generate_data(lon1, lat1, lon2, lat2, frequency, spm, padding)
+    try:
+        result = generate_data(lon1, lat1, lon2, lat2, frequency, spm, padding)
+    except DistanceExceededError as e:
+        return None, "", "Distance between gateway and node cannot exceed 5 kilometers.", True
+
     data = dict(
         params=dict(
             gateway_id=gateway_id,
             node_id=node_id,
             frequency=frequency,
-            gateway_height=gateway_height,
-            node_height=node_height,
             spm=spm,
             padding=padding,
             lon1=lon1,
@@ -267,17 +287,22 @@ def update_data(
         ),
         result=result
     )
-    return data, ""
+    return data, "", "", False
 
 
 @app.callback(
     Output("graph-2d", "figure"),
-    Input("data", "data")
+    Output("graph-2d", "hoverData"),
+    Input("data", "data"),
+    Input("gateway_height", "value"),
+    Input("node_height", "value"),
 )
-def update_graph_2d(data):
+def update_graph_2d(data, gateway_height, node_height):
+    if data is None:
+        return placeholder_figure("", 250), None
+
     result = data["result"]
     params = data["params"]
-    # Get location coordinates
 
     indices = range(int(result["npts_y"] // 2), result["npts_x"]*result["npts_y"], result["npts_y"])
     getter = itemgetter(*indices)
@@ -296,8 +321,8 @@ def update_graph_2d(data):
         )
     )
 
-    height_start = result["height_start"] + params["gateway_height"]
-    height_end = result["height_end"] + params["node_height"]
+    height_start = result["height_start"] + gateway_height
+    height_end = result["height_end"] + node_height
 
     fresnel_npts_x = int(config["fresnel"]["steps_x"])
     d1 = np.linspace(0, result["dist"], fresnel_npts_x)
@@ -316,17 +341,22 @@ def update_graph_2d(data):
         margin=dict(t=0, r=0, b=0, l=0),
         showlegend=False
     )
-    return figure
+    return figure, None
  
  
 @app.callback(
     Output("graph-cross", "figure"),
     Input("data", "data"),
-    Input("graph-2d", "hoverData")
+    Input("graph-2d", "hoverData"),
+    Input("gateway_height", "value"),
+    Input("node_height", "value")
 )
-def update_graph_cross(data, hoverData):
-    if data is None or hoverData is None or len(hoverData["points"]) == 0:
-        raise PreventUpdate
+def update_graph_cross(data, hoverData, gateway_height, node_height):
+    if data is None:
+        return placeholder_figure("", 250)
+
+    if hoverData is None or len(hoverData["points"]) == 0:
+        return placeholder_figure("Hover over height curve to show cross section", 250)
 
     result = data["result"]
     params = data["params"]
@@ -340,8 +370,8 @@ def update_graph_cross(data, hoverData):
     offset = result["offset"][data_start:data_start+result["npts_y"]]
 
     t = d1 / result["dist"]
-    height_start = result["height_start"] + params["gateway_height"]
-    height_end = result["height_end"] + params["node_height"]
+    height_start = result["height_start"] + gateway_height
+    height_end = result["height_end"] + node_height
     los_height = height_end * t + (1.0 - t) * height_start
 
     figure = go.Figure()
@@ -373,13 +403,15 @@ def update_graph_cross(data, hoverData):
     Output("graph-3d", "figure"),
     Input("data", "data"),
     Input("enable-3d-graph", "value"),
+    Input("gateway_height", "value"),
+    Input("node_height", "value")
 )
-def update_graph_3d(data, enable_3d_graph):
-    if data is None:
-        raise PreventUpdate
-
+def update_graph_3d(data, enable_3d_graph, gateway_height, node_height):
     if not enable_3d_graph:
         return placeholder_figure("3D terrain view is disabled")
+
+    if data is None:
+        return placeholder_figure()
     
     result = data["result"]
     params = data["params"]
@@ -408,8 +440,8 @@ def update_graph_3d(data, enable_3d_graph):
     x, y, z = [], [], []
     fresnel_npts_x = int(config["fresnel"]["steps_x"])
     fresnel_npts_y = int(config["fresnel"]["steps_y"])
-    height_start = result["height_start"] + params["gateway_height"]
-    height_end = result["height_end"] + params["node_height"]
+    height_start = result["height_start"] + gateway_height
+    height_end = result["height_end"] + node_height
     for h, d1 in zip(
         np.linspace(height_start, height_end, fresnel_npts_x),
         np.linspace(0, result["dist"], fresnel_npts_x)
