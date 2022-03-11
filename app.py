@@ -30,23 +30,22 @@ cache = Cache(app.server, config={
 
 stations = pd.read_csv(config["stations"]["path"])
 
-heightmap = WCSHeightMap(
-    url=config["heightmap"]["url"] + "&token=" + config["heightmap"]["token"],
-    layer=config["heightmap"]["layer"],
-    tile_size=config["heightmap"]["tile_size"],
-    resolution=config["heightmap"]["resolution"]
-)
-
-photo = WMSImage(
-    url=config["photo"]["url"] + "&token=" + config["photo"]["token"],
-    layer=config["photo"]["layer"],
-    tile_size=config["photo"]["tile_size"],
-    resolution=config["photo"]["resolution"]
-)
-
-
 @cache.memoize(timeout=600)
 def generate_data(lon1, lat1, lon2, lat2, frequency, spm, padding):
+    heightmap = WCSHeightMap(
+        url=config["heightmap"]["url"] + "&token=" + config["heightmap"]["token"],
+        layer=config["heightmap"]["layer"],
+        tile_size=config["heightmap"]["tile_size"],
+        resolution=config["heightmap"]["resolution"]
+    )
+
+    photo = WMSImage(
+        url=config["photo"]["url"] + "&token=" + config["photo"]["token"],
+        layer=config["photo"]["layer"],
+        tile_size=config["photo"]["tile_size"],
+        resolution=config["photo"]["resolution"]
+    )
+
     geod = pyproj.Geod(ellps="clrk66")
     azi1, azi2, dist = geod.inv(lon1, lat1, lon2, lat2)
 
@@ -181,8 +180,8 @@ sidebar = dbc.Form(
             make_numeric_input(**args)
             for args in numeric_inputs
         ]),
-        dbc.Switch(id="enable-3d-graph", label="Generate 3D terrain", value=True),
         dbc.Button("Submit", id="submit", type="submit", className="mt-3"),
+        dcc.Loading(html.Div(id="data-loading"))
     ],
     className="mt-3"
 ),
@@ -200,7 +199,7 @@ container = dbc.Container(
                                 dcc.Loading(dcc.Graph(id="graph-2d", figure=placeholder_figure("No results computed yet", 250))),
                                 className="border"
                             ),
-                        ], md=9),
+                        ], lg=9),
                         dbc.Col([
                             html.H3("Cross section"),
                             html.Div(
@@ -208,9 +207,10 @@ container = dbc.Container(
                                 className="border"
                             ),
                             html.P(id="test")
-                        ], md=3)
+                        ], lg=3)
                     ], className="mb-3"),
                     html.H3("3D terrain"),
+                    dbc.Switch(id="enable-3d-graph", label="Show 3D terrain", value=False),
                     html.Div(dcc.Loading(dcc.Graph(id="graph-3d", figure=placeholder_figure("No results computed yet"))), className="border")
                 ],
                 md=9,
@@ -222,11 +222,12 @@ container = dbc.Container(
     fluid=True
 )
 
-app.layout = html.Div([navbar, container])
+app.layout = html.Div([navbar, container, dcc.Store(id="data")])
 
 
 @app.callback(
-    Output("graph-2d", "figure"),
+    Output("data", "data"),
+    Output("data-loading", "children"),
     Input("submit", "n_clicks"),
     State("gateway_id", "value"),
     State("node_id", "value"),
@@ -236,7 +237,7 @@ app.layout = html.Div([navbar, container])
     State("spm", "value"),
     State("padding", "value")
 )
-def update_graph_2d(
+def update_data(
     n_clicks: int,
     gateway_id: str,
     node_id: str,
@@ -246,14 +247,38 @@ def update_graph_2d(
     spm: float,
     padding: float
 ):
-    if n_clicks is None or n_clicks == 0:
-        return placeholder_figure("This shouldn't happen. :(")
-
-    # Get location coordinates
     lon1, lat1 = stations.query("station == @gateway_id").iloc[0][["lon", "lat"]]
     lon2, lat2 = stations.query("station == @node_id").iloc[0][["lon", "lat"]]
 
     result = generate_data(lon1, lat1, lon2, lat2, frequency, spm, padding)
+    data = dict(
+        params=dict(
+            gateway_id=gateway_id,
+            node_id=node_id,
+            frequency=frequency,
+            gateway_height=gateway_height,
+            node_height=node_height,
+            spm=spm,
+            padding=padding,
+            lon1=lon1,
+            lat1=lat1,
+            lon2=lon2,
+            lat2=lat2
+        ),
+        result=result
+    )
+    return data, ""
+
+
+@app.callback(
+    Output("graph-2d", "figure"),
+    Input("data", "data")
+)
+def update_graph_2d(data):
+    result = data["result"]
+    params = data["params"]
+    # Get location coordinates
+
     indices = range(int(result["npts_y"] // 2), result["npts_x"]*result["npts_y"], result["npts_y"])
     getter = itemgetter(*indices)
     # TODO: Replace getter with slices
@@ -266,25 +291,24 @@ def update_graph_2d(
         go.Scatter(
             x=d1,
             y=height,
-            customdata=d1,
             name="Surface height",
             mode="lines"
         )
     )
 
-    height_start = result["height_start"] + gateway_height
-    height_end = result["height_end"] + node_height
+    height_start = result["height_start"] + params["gateway_height"]
+    height_end = result["height_end"] + params["node_height"]
 
     fresnel_npts_x = int(config["fresnel"]["steps_x"])
     d1 = np.linspace(0, result["dist"], fresnel_npts_x)
     h = np.linspace(height_start, height_end, fresnel_npts_x)
-    r = fresnel_zone_radius(d1, result["dist"] - d1, frequency)
+    r = fresnel_zone_radius(d1, result["dist"] - d1, params["frequency"])
 
     figure.add_trace(
-        go.Scatter(x=d1, y=h-r, name="Fresnel zone (lower)", mode="lines")
+        go.Scatter(x=d1, y=h-r, name="Fresnel zone (lower)", mode="lines", hoverinfo="skip")
     )
     figure.add_trace(
-        go.Scatter(x=d1, y=h+r, name="Fresnel zone (upper)", mode="lines")
+        go.Scatter(x=d1, y=h+r, name="Fresnel zone (upper)", mode="lines", hoverinfo="skip")
     )
 
     figure.update_layout(
@@ -293,136 +317,31 @@ def update_graph_2d(
         showlegend=False
     )
     return figure
-
-
-@app.callback(
-    Output("graph-3d", "figure"),
-    Input("submit", "n_clicks"),
-    State("enable-3d-graph", "value"),
-    State("gateway_id", "value"),
-    State("node_id", "value"),
-    State("frequency", "value"),
-    State("gateway_height", "value"),
-    State("node_height", "value"),
-    State("spm", "value"),
-    State("padding", "value"),
-)
-def update_graph_3d(
-    n_clicks: int,
-    enable_3d_graph: bool,
-    gateway_id: str,
-    node_id: str,
-    frequency: float,
-    gateway_height: float,
-    node_height: float,
-    spm: float,
-    padding: float,
-):
-    if n_clicks is None or n_clicks == 0:
-        return placeholder_figure("This shouldn't happen. :(")
-
-    if not enable_3d_graph:
-        return placeholder_figure("3D terrain generation is disabled")
-    
-    # Get location coordinates
-    lon1, lat1 = stations.query("station == @gateway_id").iloc[0][["lon", "lat"]]
-    lon2, lat2 = stations.query("station == @node_id").iloc[0][["lon", "lat"]]
-
-    result = generate_data(lon1, lat1, lon2, lat2, frequency, spm, padding)
-    dist = result["dist"]
-    t1, t2, t3 = generate_mesh_indices(result["npts_x"], result["npts_y"])
-    color_rgb = ["#{:02x}{:02x}{:02x}".format(*c) for c in result["color"]]
-
-    figure = go.Figure()
-    figure.add_trace(
-        go.Mesh3d(
-            x=result["d1"],
-            y=result["offset"],
-            z=result["height"],
-            i=t1,
-            j=t2,
-            k=t3,
-            vertexcolor=color_rgb,
-            lighting=dict(
-                ambient=1.0,
-                diffuse=0.0,
-                specular=0.0
-            )
-        )
-    )
-
-    x, y, z = [], [], []
-    fresnel_npts_x = int(config["fresnel"]["steps_x"])
-    fresnel_npts_y = int(config["fresnel"]["steps_y"])
-    height_start = result["height_start"] + gateway_height
-    height_end = result["height_end"] + node_height
-    for h, d1 in zip(
-        np.linspace(height_start, height_end, fresnel_npts_x),
-        np.linspace(0, dist, fresnel_npts_x)
-    ):
-        r = fresnel_zone_radius(d1, dist - d1, frequency)
-        for i in range(fresnel_npts_y):
-            angle = i / fresnel_npts_y * np.pi * 2.0
-            x.append(d1)
-            y.append(np.cos(angle) * r)
-            z.append(h + np.sin(angle) * r)
-
-    figure.add_trace(
-        go.Mesh3d(x=x, y=y, z=z, alphahull=0, opacity=0.5, hoverinfo="none")
-    )
-
-    figure.update_layout(
-        margin=dict(t=0, r=0, b=0, l=0),
-        height=500,
-        scene=dict(
-            aspectmode="data",
-            camera_projection_type="orthographic",
-            camera_eye=dict(x=0, y=-2.5, z=2.5),
-        ),
-    )
-
-    return figure
-
-
+ 
+ 
 @app.callback(
     Output("graph-cross", "figure"),
-    Input("graph-2d", "hoverData"),
-    State("gateway_id", "value"),
-    State("node_id", "value"),
-    State("frequency", "value"),
-    State("gateway_height", "value"),
-    State("node_height", "value"),
-    State("spm", "value"),
-    State("padding", "value"),
+    Input("data", "data"),
+    Input("graph-2d", "hoverData")
 )
-def update_graph_cross(
-    hoverData,
-    gateway_id: str,
-    node_id: str,
-    frequency: float,
-    gateway_height: float,
-    node_height: float,
-    spm: float,
-    padding: float,
-):
-    if hoverData["points"][0]["curveNumber"] != 0:
+def update_graph_cross(data, hoverData):
+    if data is None or hoverData is None or len(hoverData["points"]) == 0:
         raise PreventUpdate
 
-    lon1, lat1 = stations.query("station == @gateway_id").iloc[0][["lon", "lat"]]
-    lon2, lat2 = stations.query("station == @node_id").iloc[0][["lon", "lat"]]
-    result = generate_data(lon1, lat1, lon2, lat2, frequency, spm, padding)
+    result = data["result"]
+    params = data["params"]
 
     point_index = hoverData["points"][0]["pointIndex"]
     data_start = result["npts_y"] * point_index
 
-    d1 = hoverData["points"][0]["customdata"]
-    r = fresnel_zone_radius(d1, result["dist"] - d1, frequency)
+    d1 = hoverData["points"][0]["x"]
+    r = fresnel_zone_radius(d1, result["dist"] - d1, params["frequency"])
     height = result["height"][data_start:data_start+result["npts_y"]]
     offset = result["offset"][data_start:data_start+result["npts_y"]]
 
     t = d1 / result["dist"]
-    height_start = result["height_start"] + gateway_height
-    height_end = result["height_end"] + node_height
+    height_start = result["height_start"] + params["gateway_height"]
+    height_end = result["height_end"] + params["node_height"]
     los_height = height_end * t + (1.0 - t) * height_start
 
     figure = go.Figure()
@@ -447,6 +366,75 @@ def update_graph_cross(
         scaleanchor="x",
         scaleratio=1
     )
+    return figure
+
+
+@app.callback(
+    Output("graph-3d", "figure"),
+    Input("data", "data"),
+    Input("enable-3d-graph", "value"),
+)
+def update_graph_3d(data, enable_3d_graph):
+    if data is None:
+        raise PreventUpdate
+
+    if not enable_3d_graph:
+        return placeholder_figure("3D terrain view is disabled")
+    
+    result = data["result"]
+    params = data["params"]
+
+    t1, t2, t3 = generate_mesh_indices(result["npts_x"], result["npts_y"])
+    color_rgb = ["#{:02x}{:02x}{:02x}".format(*c) for c in result["color"]]
+
+    figure = go.Figure()
+    figure.add_trace(
+        go.Mesh3d(
+            x=result["d1"],
+            y=result["offset"],
+            z=result["height"],
+            i=t1,
+            j=t2,
+            k=t3,
+            vertexcolor=color_rgb,
+            lighting=dict(
+                ambient=1.0,
+                diffuse=0.0,
+                specular=0.0
+            )
+        )
+    )
+
+    x, y, z = [], [], []
+    fresnel_npts_x = int(config["fresnel"]["steps_x"])
+    fresnel_npts_y = int(config["fresnel"]["steps_y"])
+    height_start = result["height_start"] + params["gateway_height"]
+    height_end = result["height_end"] + params["node_height"]
+    for h, d1 in zip(
+        np.linspace(height_start, height_end, fresnel_npts_x),
+        np.linspace(0, result["dist"], fresnel_npts_x)
+    ):
+        r = fresnel_zone_radius(d1, result["dist"] - d1, params["frequency"])
+        for i in range(fresnel_npts_y):
+            angle = i / fresnel_npts_y * np.pi * 2.0
+            x.append(d1)
+            y.append(np.cos(angle) * r)
+            z.append(h + np.sin(angle) * r)
+
+    figure.add_trace(
+        go.Mesh3d(x=x, y=y, z=z, alphahull=0, opacity=0.5, hoverinfo="none")
+    )
+
+    figure.update_layout(
+        margin=dict(t=0, r=0, b=0, l=0),
+        height=500,
+        scene=dict(
+            aspectmode="data",
+            camera_projection_type="orthographic",
+            camera_eye=dict(x=0, y=-2.5, z=2.5),
+        ),
+    )
+
     return figure
 
 
