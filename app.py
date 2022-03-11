@@ -6,7 +6,8 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 from flask_caching import Cache
 
-import json
+import os
+import configparser
 import numpy as np
 import pandas as pd
 from operator import itemgetter
@@ -20,8 +21,10 @@ class DistanceExceededError(Exception):
     pass
 
 
-with open("config.json", "r") as fp:
-    config = json.load(fp)
+config = configparser.ConfigParser()
+config.read("config.defaults.ini")
+if os.path.exists("config.ini"):
+    config.read("config.ini")
 
 theme_url = getattr(dbc.themes, config["dashboard"]["theme"].upper())
 app = dash.Dash(__name__, external_stylesheets=[theme_url], prevent_initial_callbacks=True)
@@ -32,7 +35,7 @@ cache = Cache(app.server, config={
     "CACHE_DIR": config["flask"]["cache_dir"]
 })
 
-stations = pd.read_csv(config["stations"]["path"])
+stations = pd.read_csv(config["dashboard"]["stations"])
 
 @cache.memoize(timeout=600)
 def generate_data(lon1, lat1, lon2, lat2, frequency, spm, padding):
@@ -44,15 +47,15 @@ def generate_data(lon1, lat1, lon2, lat2, frequency, spm, padding):
     heightmap = WCSHeightMap(
         url=config["heightmap"]["url"] + "&token=" + config["heightmap"]["token"],
         layer=config["heightmap"]["layer"],
-        tile_size=config["heightmap"]["tile_size"],
-        resolution=config["heightmap"]["resolution"]
+        tile_size=int(config["heightmap"]["tile_size"]),
+        resolution=int(config["heightmap"]["resolution"])
     )
 
     photo = WMSImage(
-        url=config["photo"]["url"] + "&token=" + config["photo"]["token"],
-        layer=config["photo"]["layer"],
-        tile_size=config["photo"]["tile_size"],
-        resolution=config["photo"]["resolution"]
+        url=config["image"]["url"] + "&token=" + config["image"]["token"],
+        layer=config["image"]["layer"],
+        tile_size=int(config["image"]["tile_size"]),
+        resolution=int(config["image"]["resolution"])
     )
 
     max_r = fresnel_zone_radius(dist / 2.0, dist / 2.0, frequency) + 2.0 * padding
@@ -324,7 +327,7 @@ def update_graph_2d(data, gateway_height, node_height):
     height_start = result["height_start"] + gateway_height
     height_end = result["height_end"] + node_height
 
-    fresnel_npts_x = int(config["fresnel"]["steps_x"])
+    fresnel_npts_x = int(config["dashboard"]["fresnel_steps_x"])
     d1 = np.linspace(0, result["dist"], fresnel_npts_x)
     h = np.linspace(height_start, height_end, fresnel_npts_x)
     r = fresnel_zone_radius(d1, result["dist"] - d1, params["frequency"])
@@ -438,8 +441,8 @@ def update_graph_3d(data, enable_3d_graph, gateway_height, node_height):
     )
 
     x, y, z = [], [], []
-    fresnel_npts_x = int(config["fresnel"]["steps_x"])
-    fresnel_npts_y = int(config["fresnel"]["steps_y"])
+    fresnel_npts_x = int(config["dashboard"]["fresnel_steps_x"])
+    fresnel_npts_y = int(config["dashboard"]["fresnel_steps_y"])
     height_start = result["height_start"] + gateway_height
     height_end = result["height_end"] + node_height
     for h, d1 in zip(
