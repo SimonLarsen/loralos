@@ -305,8 +305,8 @@ def update_graph_3d(data, clickData, enable_3d_graph, gateway_offset, node_offse
 
     window_pts = int(round(npts_x / result["dist"] * window))
     xi_mid = int(clickData["points"][0]["pointIndex"])
-    xi_start = int(xi_mid - window_pts // 2)
-    xi_end = int(xi_start + window_pts)
+    xi_start = xi_mid - window_pts // 2
+    xi_end = xi_start + window_pts
 
     xi_start = max(xi_start, 0)
     xi_end = min(xi_end, npts_x-1)
@@ -335,7 +335,7 @@ def update_graph_3d(data, clickData, enable_3d_graph, gateway_offset, node_offse
     )
 
     # Add 3D fresnel zone trace
-    fresnel_steps_x = int(round(window / float(config["dashboard"]["fresnel_ppm_x"])))
+    fresnel_steps_x = int(round(window * float(config["dashboard"]["fresnel_ppm_x"])))
     fresnel_steps_y = int(config["dashboard"]["fresnel_steps_y"])
 
     height_start = result["height_start"] + gateway_offset
@@ -348,19 +348,36 @@ def update_graph_3d(data, clickData, enable_3d_graph, gateway_offset, node_offse
     height1 = lerp(height_start, height_end, t1)
 
     x, y, z = [], [], []
+    angles = np.arange(fresnel_steps_y) / fresnel_steps_y * np.pi * 2.0
+    angles_cos = np.cos(angles)
+    angles_sin = np.sin(angles)
     for h, d in zip(
         np.linspace(height0, height1, fresnel_steps_x),
-        np.linspace(d1[0], d1[-1], fresnel_steps_y)
+        np.linspace(d1[0], d1[-1], fresnel_steps_x)
     ):
         r = fresnel_zone_radius(d, result["dist"] - d, params["frequency"])
-        for i in range(fresnel_steps_y):
-            angle = i / fresnel_steps_y * np.pi * 2.0
-            x.append(d)
-            y.append(np.cos(angle) * r)
-            z.append(h + np.sin(angle) * r)
+        x.extend(np.repeat(d, len(angles)))
+        y.extend(angles_cos * r)
+        z.extend(h + angles_sin * r)
 
     figure.add_trace(
-        go.Mesh3d(x=x, y=y, z=z, alphahull=0, opacity=0.5, hoverinfo="none")
+        go.Mesh3d(x=x, y=y, z=z, alphahull=0, opacity=0.4, hoverinfo="none")
+    )
+
+    # Draw ring around fresnel at clicked point
+    d1_click = clickData["points"][0]["x"]
+    t_click = d1_click / result["dist"]
+    h_click = lerp(height_start, height_end, t_click)
+    r_click = fresnel_zone_radius(d1_click, result["dist"]-d1_click, params["frequency"])
+    angles = np.linspace(0, 2.0*np.pi, fresnel_steps_y+1)
+    figure.add_trace(
+        go.Scatter3d(
+            x=np.repeat(d1_click, len(angles)),
+            y=np.cos(angles) * r_click,
+            z=h_click + np.sin(angles) * r_click,
+            mode="lines",
+            line=dict(color="#0000ff")
+        )
     )
 
     figure.update_layout(
@@ -369,8 +386,8 @@ def update_graph_3d(data, clickData, enable_3d_graph, gateway_offset, node_offse
         scene=dict(
             aspectmode="data",
             camera_projection_type="orthographic",
-            camera_eye=dict(x=0, y=-2.5, z=2.5),
-        ),
+            camera_eye=dict(x=-2.5, y=-2.5, z=2.5)
+        )
     )
 
     return figure
@@ -412,7 +429,7 @@ def sidebar_numeric_input(
 
 numeric_inputs = [
     dict(id="frequency", label="Frequency", unit="GHz", min=0, max=10, value=0.858),
-    dict(id="spm", label="Samples per meter", unit="per meter", min=0.01, max=2, value=1.0),
+    dict(id="spm", label="Sample resolution", unit="per meter", min=0.01, max=2, value=0.8),
     dict(id="padding", label="View padding", unit="m", min=0, max=100, value=10),
 ]
 
@@ -493,7 +510,7 @@ container = dbc.Container(
                         dbc.Col([
                             dbc.Label("View window", html_for="3d_view_window"),
                             dbc.InputGroup([
-                                dbc.Input(id="3d_view_window", type="number", min=10, max=5000, value=500),
+                                dbc.Input(id="3d_view_window", type="number", min=10, max=5000, value=400),
                                 dbc.InputGroupText("m")
                             ])
                         ], sm=6, lg=3, xl=2)
