@@ -444,7 +444,7 @@ sidebar = dbc.Form(
         html.Div([
             dbc.Label("View width", html_for="view_width"),
             dbc.InputGroup([
-                dbc.Input(id="view_width", type="number", min=5, max=100, value=20),
+                dbc.Input(id="view_width", type="number", min=5, max=100, value=50),
                 dbc.InputGroupText("m")
             ])
         ], className="mb-3"),
