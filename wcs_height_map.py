@@ -52,7 +52,6 @@ class WCSHeightMap:
                 f".{FORMAT_ENDINGS[self.format]}"
             )
         )
-        print(cache_file)
         if not os.path.exists(cache_file):
             res = self.wcs.getCoverage(
                 identifier=self.layer,
