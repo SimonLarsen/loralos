@@ -1,7 +1,6 @@
 import dash
 from dash import html, dcc
 from dash.dependencies import Input, Output, State
-from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 from flask_caching import Cache
@@ -14,6 +13,7 @@ from wcs_height_map import WCSHeightMap
 from wms_image import WMSImage
 import pyproj
 from fresnel import fresnel_zone_radius
+import tempfile
 
 
 class DistanceExceededError(Exception):
@@ -31,13 +31,19 @@ if os.path.exists("config.ini"):
     config.read("config.ini")
 
 theme_url = getattr(dbc.themes, config["dashboard"]["theme"].upper())
-app = dash.Dash(__name__, external_stylesheets=[theme_url], prevent_initial_callbacks=True)
+app = dash.Dash(
+    __name__, external_stylesheets=[theme_url], prevent_initial_callbacks=True
+)
 app.title = "LoRaWAN line of sight helper"
 
-cache = Cache(app.server, config={
-    "CACHE_TYPE": "filesystem",
-    "CACHE_DIR": config["flask"]["cache_dir"]
-})
+WMS_CACHE_DIR = tempfile.TemporaryDirectory(prefix="wms_cache")
+WCS_CACHE_DIR = tempfile.TemporaryDirectory(prefix="wcs_cache")
+FLASK_CACHE_DIR = tempfile.TemporaryDirectory(prefix="flaskcache")
+
+cache = Cache(
+    app.server,
+    config={"CACHE_TYPE": "filesystem", "CACHE_DIR": FLASK_CACHE_DIR.name},
+)
 
 stations = pd.read_csv(config["dashboard"]["stations"])
 
@@ -54,17 +60,21 @@ def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
         raise DistanceExceededError
 
     heightmap = WCSHeightMap(
-        url=config["heightmap"]["url"] + "&token=" + config["heightmap"]["token"],
+        url=config["heightmap"]["url"]
+        + "&token="
+        + config["heightmap"]["token"],
         layer=config["heightmap"]["layer"],
         tile_size=int(config["heightmap"]["tile_size"]),
-        resolution=int(config["heightmap"]["resolution"])
+        resolution=int(config["heightmap"]["resolution"]),
+        cache_dir=WCS_CACHE_DIR.name,
     )
 
     image = WMSImage(
         url=config["image"]["url"] + "&token=" + config["image"]["token"],
         layer=config["image"]["layer"],
         tile_size=int(config["image"]["tile_size"]),
-        resolution=int(config["image"]["resolution"])
+        resolution=int(config["image"]["resolution"]),
+        cache_dir=WMS_CACHE_DIR.name,
     )
 
     npts_x = round(dist * spm)
@@ -75,15 +85,27 @@ def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
     out_d1 = []
     out_offset = []
 
-    inter = geod.inv_intermediate(lon1, lat1, lon2, lat2, npts=npts_x, initial_idx=0, terminus_idx=0)
+    inter = geod.inv_intermediate(
+        lon1, lat1, lon2, lat2, npts=npts_x, initial_idx=0, terminus_idx=0
+    )
 
-    for ilon, ilat, in zip(inter.lons, inter.lats):
+    for (
+        ilon,
+        ilat,
+    ) in zip(inter.lons, inter.lats):
         azi_fwd, azi_bwd, d1 = geod.inv(lon1, lat1, ilon, ilat)
-        flon1, flat1, faz1 = geod.fwd(ilon, ilat, azi_bwd - 90.0, view_width/2.0)
-        flon2, flat2, faz2 = geod.fwd(ilon, ilat, azi_bwd + 90.0, view_width/2.0)
+        flon1, flat1, faz1 = geod.fwd(
+            ilon, ilat, azi_bwd - 90.0, view_width / 2.0
+        )
+        flon2, flat2, faz2 = geod.fwd(
+            ilon, ilat, azi_bwd + 90.0, view_width / 2.0
+        )
 
         rinter = geod.inv_intermediate(
-            flon1, flat1, flon2, flat2,
+            flon1,
+            flat1,
+            flon2,
+            flat2,
             npts=npts_y,
             initial_idx=0,
             terminus_idx=0,
@@ -92,7 +114,9 @@ def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
         out_lon.extend(rinter.lons)
         out_lat.extend(rinter.lats)
         out_d1.extend(np.repeat(d1, npts_y))
-        out_offset.extend(np.linspace(-view_width/2.0, view_width/2.0, npts_y))
+        out_offset.extend(
+            np.linspace(-view_width / 2.0, view_width / 2.0, npts_y)
+        )
 
     out_height = heightmap.get_heights(out_lon, out_lat)
     out_color = image.get_pixels(out_lon, out_lat)
@@ -111,7 +135,7 @@ def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
         height=out_height,
         color=out_color,
         height_start=height_start,
-        height_end=height_end
+        height_end=height_end,
     )
 
 
@@ -141,22 +165,25 @@ def generate_mesh_indices(n: int, m: int):
     State("gateway_id", "value"),
     State("node_id", "value"),
     State("spm", "value"),
-    State("view_width", "value")
+    State("view_width", "value"),
 )
 def update_data(
-    n_clicks: int,
-    gateway_id: str,
-    node_id: str,
-    spm: float,
-    view_width: float
+    n_clicks: int, gateway_id: str, node_id: str, spm: float, view_width: float
 ):
-    lon1, lat1 = stations.query("station == @gateway_id").iloc[0][["lon", "lat"]]
+    lon1, lat1 = stations.query("station == @gateway_id").iloc[0][
+        ["lon", "lat"]
+    ]
     lon2, lat2 = stations.query("station == @node_id").iloc[0][["lon", "lat"]]
 
     try:
         result = generate_data(lon1, lat1, lon2, lat2, spm, view_width)
     except DistanceExceededError:
-        return None, "", f"Distance between gateway and node cannot exceed {MAX_DISTANCE} meters.", True
+        return (
+            None,
+            "",
+            f"Distance between gateway and node cannot exceed {MAX_DISTANCE} meters.",
+            True,
+        )
 
     data = dict(
         params=dict(
@@ -167,9 +194,9 @@ def update_data(
             lon1=lon1,
             lat1=lat1,
             lon2=lon2,
-            lat2=lat2
+            lat2=lat2,
         ),
-        result=result
+        result=result,
     )
     return data, "", "", False
 
@@ -180,7 +207,7 @@ def update_data(
     Input("data", "data"),
     Input("gateway_offset", "value"),
     Input("node_offset", "value"),
-    Input("frequency", "value")
+    Input("frequency", "value"),
 )
 def update_graph_2d(data, gateway_offset, node_offset, frequency):
     if data is None:
@@ -190,8 +217,8 @@ def update_graph_2d(data, gateway_offset, node_offset, frequency):
     params = data["params"]
 
     npts_y = result["npts_y"]
-    d1 = result["d1"][npts_y // 2::npts_y]
-    height = result["height"][npts_y // 2::npts_y]
+    d1 = result["d1"][npts_y // 2 :: npts_y]
+    height = result["height"][npts_y // 2 :: npts_y]
 
     figure = go.Figure()
     figure.add_trace(
@@ -200,29 +227,45 @@ def update_graph_2d(data, gateway_offset, node_offset, frequency):
             y=height,
             name="Surface height",
             mode="lines",
-            hovertemplate="Gateway dist.: %{x}<br>Terrain height: %{y}"
+            hovertemplate="Gateway dist.: %{x}<br>Terrain height: %{y}",
         )
     )
 
     gateway_height = result["height_start"] + gateway_offset
     node_height = result["height_end"] + node_offset
 
-    fresnel_steps_x = int(round(result["dist"] * float(config["dashboard"]["fresnel_ppm_x"])))
+    fresnel_steps_x = int(
+        round(result["dist"] * float(config["dashboard"]["fresnel_ppm_x"]))
+    )
 
     d1 = np.linspace(0, result["dist"], fresnel_steps_x)
     h = np.linspace(gateway_height, node_height, fresnel_steps_x)
     r = fresnel_zone_radius(d1, result["dist"] - d1, frequency)
 
-    figure.add_traces([
-        go.Scatter(x=d1, y=h-r, name="Fresnel zone (lower)", mode="lines", hoverinfo="skip"),
-        go.Scatter(x=d1, y=h+r, name="Fresnel zone (upper)", mode="lines", hoverinfo="skip")
-    ])
+    figure.add_traces(
+        [
+            go.Scatter(
+                x=d1,
+                y=h - r,
+                name="Fresnel zone (lower)",
+                mode="lines",
+                hoverinfo="skip",
+            ),
+            go.Scatter(
+                x=d1,
+                y=h + r,
+                name="Fresnel zone (upper)",
+                mode="lines",
+                hoverinfo="skip",
+            ),
+        ]
+    )
 
     figure.update_layout(
         height=PLOT_HEIGHT_2D,
         margin=MARGIN_NONE,
         showlegend=False,
-        hovermode="x"
+        hovermode="x",
     )
     return figure, None
 
@@ -233,14 +276,18 @@ def update_graph_2d(data, gateway_offset, node_offset, frequency):
     Input("graph-2d", "clickData"),
     Input("gateway_offset", "value"),
     Input("node_offset", "value"),
-    Input("frequency", "value")
+    Input("frequency", "value"),
 )
-def update_graph_cross(data, clickData, gateway_offset, node_offset, frequency):
+def update_graph_cross(
+    data, clickData, gateway_offset, node_offset, frequency
+):
     if data is None:
         return placeholder_figure("", PLOT_HEIGHT_2D)
 
     if clickData is None or len(clickData["points"]) == 0:
-        return placeholder_figure("Click height curve to show cross section", PLOT_HEIGHT_2D)
+        return placeholder_figure(
+            "Click height curve to show cross section", PLOT_HEIGHT_2D
+        )
 
     result = data["result"]
     params = data["params"]
@@ -262,18 +309,15 @@ def update_graph_cross(data, clickData, gateway_offset, node_offset, frequency):
     figure.add_trace(go.Scatter(x=offset, y=height, mode="lines"))
     figure.add_shape(
         type="circle",
-        xref="x", yref="y",
-        x0=-r, y0=los_height - r,
-        x1=r, y1=los_height + r
+        xref="x",
+        yref="y",
+        x0=-r,
+        y0=los_height - r,
+        x1=r,
+        y1=los_height + r,
     )
-    figure.update_layout(
-        height=PLOT_HEIGHT_2D,
-        margin=MARGIN_NONE
-    )
-    figure.update_yaxes(
-        scaleanchor="x",
-        scaleratio=1
-    )
+    figure.update_layout(height=PLOT_HEIGHT_2D, margin=MARGIN_NONE)
+    figure.update_yaxes(scaleanchor="x", scaleratio=1)
     return figure
 
 
@@ -285,17 +329,29 @@ def update_graph_cross(data, clickData, gateway_offset, node_offset, frequency):
     Input("gateway_offset", "value"),
     Input("node_offset", "value"),
     Input("frequency", "value"),
-    Input("3d_view_window", "value")
+    Input("3d_view_window", "value"),
 )
-def update_graph_3d(data, clickData, enable_3d_graph, gateway_offset, node_offset, frequency, window):
+def update_graph_3d(
+    data,
+    clickData,
+    enable_3d_graph,
+    gateway_offset,
+    node_offset,
+    frequency,
+    window,
+):
     if not enable_3d_graph:
-        return placeholder_figure("3D terrain view is disabled", PLOT_HEIGHT_3D)
+        return placeholder_figure(
+            "3D terrain view is disabled", PLOT_HEIGHT_3D
+        )
 
     if data is None:
         return placeholder_figure("", PLOT_HEIGHT_3D)
 
     if clickData is None or len(clickData["points"]) == 0:
-        return placeholder_figure("Click height curve to show cross section", PLOT_HEIGHT_3D)
+        return placeholder_figure(
+            "Click height curve to show cross section", PLOT_HEIGHT_3D
+        )
 
     result = data["result"]
     params = data["params"]
@@ -308,7 +364,7 @@ def update_graph_3d(data, clickData, enable_3d_graph, gateway_offset, node_offse
     xi_end = xi_start + window_pts
 
     xi_start = max(xi_start, 0)
-    xi_end = min(xi_end, npts_x-1)
+    xi_end = min(xi_end, npts_x - 1)
     window_pts = xi_end - xi_start
 
     data_start = xi_start * npts_y
@@ -326,15 +382,21 @@ def update_graph_3d(data, clickData, enable_3d_graph, gateway_offset, node_offse
     figure = go.Figure()
     figure.add_trace(
         go.Mesh3d(
-            x=d1, y=offset, z=height,
-            i=t1, j=t2, k=t3,
+            x=d1,
+            y=offset,
+            z=height,
+            i=t1,
+            j=t2,
+            k=t3,
             vertexcolor=color_rgb,
-            lighting=dict(ambient=1.0, diffuse=0.0, specular=0.0)
+            lighting=dict(ambient=1.0, diffuse=0.0, specular=0.0),
         )
     )
 
     # Add 3D fresnel zone trace
-    fresnel_steps_x = int(round(window * float(config["dashboard"]["fresnel_ppm_x"])))
+    fresnel_steps_x = int(
+        round(window * float(config["dashboard"]["fresnel_ppm_x"]))
+    )
     fresnel_steps_y = int(config["dashboard"]["fresnel_steps_y"])
 
     height_start = result["height_start"] + gateway_offset
@@ -352,7 +414,7 @@ def update_graph_3d(data, clickData, enable_3d_graph, gateway_offset, node_offse
     angles_sin = np.sin(angles)
     for h, d in zip(
         np.linspace(height0, height1, fresnel_steps_x),
-        np.linspace(d1[0], d1[-1], fresnel_steps_x)
+        np.linspace(d1[0], d1[-1], fresnel_steps_x),
     ):
         r = fresnel_zone_radius(d, result["dist"] - d, frequency)
         x.extend(np.repeat(d, len(angles)))
@@ -367,15 +429,17 @@ def update_graph_3d(data, clickData, enable_3d_graph, gateway_offset, node_offse
     d1_click = clickData["points"][0]["x"]
     t_click = d1_click / result["dist"]
     h_click = lerp(height_start, height_end, t_click)
-    r_click = fresnel_zone_radius(d1_click, result["dist"]-d1_click, frequency)
-    angles = np.linspace(0, 2.0*np.pi, fresnel_steps_y+1)
+    r_click = fresnel_zone_radius(
+        d1_click, result["dist"] - d1_click, frequency
+    )
+    angles = np.linspace(0, 2.0 * np.pi, fresnel_steps_y + 1)
     figure.add_trace(
         go.Scatter3d(
             x=np.repeat(d1_click, len(angles)),
             y=np.cos(angles) * r_click,
             z=h_click + np.sin(angles) * r_click,
             mode="lines",
-            line=dict(color="#0000ff")
+            line=dict(color="#0000ff"),
         )
     )
 
@@ -385,8 +449,8 @@ def update_graph_3d(data, clickData, enable_3d_graph, gateway_offset, node_offse
         scene=dict(
             aspectmode="data",
             camera_projection_type="orthographic",
-            camera_eye=dict(x=-2.5, y=-2.5, z=2.5)
-        )
+            camera_eye=dict(x=-2.5, y=-2.5, z=2.5),
+        ),
     )
 
     return figure
@@ -407,9 +471,9 @@ def placeholder_figure(text: str = "", height: int = 100):
                 yref="paper",
                 showarrow=False,
                 font_size=14,
-                font_color="#808080"
+                font_color="#808080",
             )
-        ]
+        ],
     )
     return figure
 
@@ -426,33 +490,67 @@ options_stations = [dict(label=id, value=id) for id in stations.station]
 sidebar = dbc.Form(
     [
         html.H5("Session settings"),
-        html.Div([
-            dbc.Label("Gateway location", html_for="gateway_id"),
-            dbc.Select(id="gateway_id", options=options_stations, value="FGV"),
-        ], className="mb-3"),
-        html.Div([
-            dbc.Label("Node location", html_for="node_id"),
-            dbc.Select(id="node_id", options=options_stations, value="FGD"),
-        ], className="mb-3"),
-        html.Div([
-            dbc.Label("Sample resolution", html_for="spm"),
-            dbc.InputGroup([
-                dbc.Input(id="spm", type="number", min=0.01, max=2.0, value=0.8),
-                dbc.InputGroupText("samples/m")
-            ])
-        ], className="mb-3"),
-        html.Div([
-            dbc.Label("View width", html_for="view_width"),
-            dbc.InputGroup([
-                dbc.Input(id="view_width", type="number", min=5, max=100, value=50),
-                dbc.InputGroupText("m")
-            ])
-        ], className="mb-3"),
-        dbc.Button("Update", id="session_update", type="submit", className="mb-3"),
+        html.Div(
+            [
+                dbc.Label("Gateway location", html_for="gateway_id"),
+                dbc.Select(
+                    id="gateway_id", options=options_stations, value="FGV"
+                ),
+            ],
+            className="mb-3",
+        ),
+        html.Div(
+            [
+                dbc.Label("Node location", html_for="node_id"),
+                dbc.Select(
+                    id="node_id", options=options_stations, value="FGD"
+                ),
+            ],
+            className="mb-3",
+        ),
+        html.Div(
+            [
+                dbc.Label("Sample resolution", html_for="spm"),
+                dbc.InputGroup(
+                    [
+                        dbc.Input(
+                            id="spm",
+                            type="number",
+                            min=0.01,
+                            max=2.0,
+                            value=0.8,
+                        ),
+                        dbc.InputGroupText("samples/m"),
+                    ]
+                ),
+            ],
+            className="mb-3",
+        ),
+        html.Div(
+            [
+                dbc.Label("View width", html_for="view_width"),
+                dbc.InputGroup(
+                    [
+                        dbc.Input(
+                            id="view_width",
+                            type="number",
+                            min=5,
+                            max=100,
+                            value=50,
+                        ),
+                        dbc.InputGroupText("m"),
+                    ]
+                ),
+            ],
+            className="mb-3",
+        ),
+        dbc.Button(
+            "Update", id="session_update", type="submit", className="mb-3"
+        ),
         dbc.Alert(id="sidebar_error", color="danger", is_open=False),
-        dcc.Loading(html.Div(id="data_loading"))
+        dcc.Loading(html.Div(id="data_loading")),
     ],
-    className="pt-3"
+    className="pt-3",
 )
 
 container = dbc.Container(
@@ -462,73 +560,177 @@ container = dbc.Container(
             dbc.Col(
                 [
                     html.H5("Fresnel zone"),
-                    dbc.Row([
-                        dbc.Col([
-                            dbc.Label("Gateway height", html_for="gateway_offset"),
-                            dbc.InputGroup([
-                                dbc.Input(id="gateway_offset", type="number", value=12.0),
-                                dbc.InputGroupText("m")
-                            ])
-                        ], sm=4, lg=3, xl=2),
-                        dbc.Col([
-                            dbc.Label("Node height", html_for="node_offset"),
-                            dbc.InputGroup([
-                                dbc.Input(id="node_offset", type="number", value=2.0),
-                                dbc.InputGroupText("m")
-                            ])
-                        ], sm=4, lg=3, xl=2),
-                        dbc.Col([
-                            dbc.Label("Frequency", html_for="frequency"),
-                            dbc.InputGroup([
-                                dbc.Input(id="frequency", type="number", min=0.001, max=10, value=0.868),
-                                dbc.InputGroupText("GHz")
-                            ])
-                        ], sm=4, lg=3, xl=2)
-                    ], className="mb-3"),
-                    dbc.Row([
-                        dbc.Col([
-                            html.H5("Height curve"),
-                            html.Div(
-                                dcc.Loading(dcc.Graph(id="graph-2d", figure=placeholder_figure("", PLOT_HEIGHT_2D))),
-                                className="border"
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    dbc.Label(
+                                        "Gateway height",
+                                        html_for="gateway_offset",
+                                    ),
+                                    dbc.InputGroup(
+                                        [
+                                            dbc.Input(
+                                                id="gateway_offset",
+                                                type="number",
+                                                value=12.0,
+                                            ),
+                                            dbc.InputGroupText("m"),
+                                        ]
+                                    ),
+                                ],
+                                sm=4,
+                                lg=3,
+                                xl=2,
                             ),
-                        ], lg=9),
-                        dbc.Col([
-                            html.H5("Cross section"),
-                            html.Div(
-                                dcc.Loading(dcc.Graph(id="graph-cross", figure=placeholder_figure("", PLOT_HEIGHT_2D))),
-                                className="border"
+                            dbc.Col(
+                                [
+                                    dbc.Label(
+                                        "Node height", html_for="node_offset"
+                                    ),
+                                    dbc.InputGroup(
+                                        [
+                                            dbc.Input(
+                                                id="node_offset",
+                                                type="number",
+                                                value=2.0,
+                                            ),
+                                            dbc.InputGroupText("m"),
+                                        ]
+                                    ),
+                                ],
+                                sm=4,
+                                lg=3,
+                                xl=2,
                             ),
-                            html.P(id="test")
-                        ], lg=3)
-                    ], className="mb-3"),
+                            dbc.Col(
+                                [
+                                    dbc.Label(
+                                        "Frequency", html_for="frequency"
+                                    ),
+                                    dbc.InputGroup(
+                                        [
+                                            dbc.Input(
+                                                id="frequency",
+                                                type="number",
+                                                min=0.001,
+                                                max=10,
+                                                value=0.868,
+                                            ),
+                                            dbc.InputGroupText("GHz"),
+                                        ]
+                                    ),
+                                ],
+                                sm=4,
+                                lg=3,
+                                xl=2,
+                            ),
+                        ],
+                        className="mb-3",
+                    ),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    html.H5("Height curve"),
+                                    html.Div(
+                                        dcc.Loading(
+                                            dcc.Graph(
+                                                id="graph-2d",
+                                                figure=placeholder_figure(
+                                                    "", PLOT_HEIGHT_2D
+                                                ),
+                                            )
+                                        ),
+                                        className="border",
+                                    ),
+                                ],
+                                lg=9,
+                            ),
+                            dbc.Col(
+                                [
+                                    html.H5("Cross section"),
+                                    html.Div(
+                                        dcc.Loading(
+                                            dcc.Graph(
+                                                id="graph-cross",
+                                                figure=placeholder_figure(
+                                                    "", PLOT_HEIGHT_2D
+                                                ),
+                                            )
+                                        ),
+                                        className="border",
+                                    ),
+                                    html.P(id="test"),
+                                ],
+                                lg=3,
+                            ),
+                        ],
+                        className="mb-3",
+                    ),
                     html.H5("3D terrain"),
-                    dbc.Row([
-                        dbc.Col(
-                            dbc.Switch(id="enable-3d-graph", label="Show 3D terrain", value=False),
-                            sm=6, lg=3, xl=2
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                dbc.Switch(
+                                    id="enable-3d-graph",
+                                    label="Show 3D terrain",
+                                    value=False,
+                                ),
+                                sm=6,
+                                lg=3,
+                                xl=2,
+                            ),
+                            dbc.Col(
+                                [
+                                    dbc.Label(
+                                        "View window",
+                                        html_for="3d_view_window",
+                                    ),
+                                    dbc.InputGroup(
+                                        [
+                                            dbc.Input(
+                                                id="3d_view_window",
+                                                type="number",
+                                                min=10,
+                                                max=5000,
+                                                value=400,
+                                            ),
+                                            dbc.InputGroupText("m"),
+                                        ]
+                                    ),
+                                ],
+                                sm=6,
+                                lg=3,
+                                xl=2,
+                            ),
+                        ],
+                        className="mb-3",
+                    ),
+                    html.Div(
+                        dcc.Loading(
+                            dcc.Graph(
+                                id="graph-3d",
+                                figure=placeholder_figure("", PLOT_HEIGHT_3D),
+                            )
                         ),
-                        dbc.Col([
-                            dbc.Label("View window", html_for="3d_view_window"),
-                            dbc.InputGroup([
-                                dbc.Input(id="3d_view_window", type="number", min=10, max=5000, value=400),
-                                dbc.InputGroupText("m")
-                            ])
-                        ], sm=6, lg=3, xl=2)
-                    ], className="mb-3"),
-                    html.Div(dcc.Loading(dcc.Graph(id="graph-3d", figure=placeholder_figure("", PLOT_HEIGHT_3D))), className="border")
+                        className="border",
+                    ),
                 ],
                 md=9,
                 lg=10,
-                className="py-3"
+                className="py-3",
             ),
             html.Footer(
-                html.Small("Energinet | LoRaWAN line of sight helper", className="text-muted"),
-                className="border-top py-3"
-            )
+                html.Small(
+                    "Energinet | LoRaWAN line of sight helper",
+                    className="text-muted",
+                ),
+                className="border-top py-3",
+            ),
         ]
     ),
-    fluid=True
+    fluid=True,
 )
 
 app.layout = html.Div([navbar, container, dcc.Store(id="data")])

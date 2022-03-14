@@ -3,6 +3,7 @@ from owslib.wcs import WebCoverageService
 import rasterio
 import os.path
 from typing import List
+from pathlib import Path
 
 
 FORMAT_ENDINGS = {
@@ -15,6 +16,7 @@ class WCSHeightMap:
         self,
         url: str,
         layer: str,
+        cache_dir: str,
         tile_size: int = 1000,
         resolution: int = 500,
         format: str = "GTiff",
@@ -22,6 +24,7 @@ class WCSHeightMap:
     ):
         self.url = url
         self.layer = layer
+        self.cache_dir = cache_dir
         self.tile_size = tile_size
         self.resolution = resolution
         self.format = format
@@ -41,7 +44,15 @@ class WCSHeightMap:
         ty = int(y // self.tile_size) * self.tile_size
         bbox = (tx, ty, tx + self.tile_size, ty + self.tile_size)
 
-        cache_file = f"mapcache/wcs_{self.layer}_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}_{self.tile_size}_{self.resolution}.{FORMAT_ENDINGS[self.format]}"
+        cache_file = (
+            Path(self.cache_dir) /
+            (
+                f"wcs_{self.layer}_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}"
+                f"_{self.tile_size}_{self.resolution}"
+                f".{FORMAT_ENDINGS[self.format]}"
+            )
+        )
+        print(cache_file)
         if not os.path.exists(cache_file):
             res = self.wcs.getCoverage(
                 identifier=self.layer,
