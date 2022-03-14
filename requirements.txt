@@ -1,0 +1,9 @@
+dash
+dash-bootstrap-components
+pyproj
+rasterio
+owslib
+numpy
+pandas
+orjson
+flask-caching
