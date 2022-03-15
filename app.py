@@ -28,8 +28,7 @@ MARGIN_NONE = dict(t=0, r=0, b=0, l=0)
 MAX_DISTANCE = 50000
 
 config = configparser.ConfigParser(
-    defaults=os.environ,
-    interpolation=configparser.ExtendedInterpolation()
+    defaults=os.environ, interpolation=configparser.ExtendedInterpolation()
 )
 config.read("config.ini")
 
@@ -37,7 +36,7 @@ theme_url = getattr(dbc.themes, config["dashboard"]["theme"].upper())
 app = dash.Dash(
     __name__,
     external_stylesheets=[theme_url, dbc.icons.FONT_AWESOME],
-    prevent_initial_callbacks=True
+    prevent_initial_callbacks=True,
 )
 app.title = "LoRaWAN line of sight helper"
 
@@ -87,7 +86,6 @@ def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
 
     out_lon = []
     out_lat = []
-    out_d1 = []
     out_offset = []
 
     inter = geod.inv_intermediate(
@@ -118,7 +116,6 @@ def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
 
         out_lon.extend(rinter.lons)
         out_lat.extend(rinter.lats)
-        out_d1.extend(np.repeat(d1, npts_y))
         out_offset.extend(
             np.linspace(-view_width / 2.0, view_width / 2.0, npts_y)
         )
@@ -133,9 +130,6 @@ def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
         dist=dist,
         npts_x=npts_x,
         npts_y=npts_y,
-        lon=out_lon,
-        lat=out_lat,
-        d1=out_d1,
         offset=out_offset,
         height=out_height,
         color=out_color,
@@ -220,8 +214,9 @@ def update_graph_2d(data, gateway_offset, node_offset, frequency):
 
     result = data["result"]
 
+    npts_x = result["npts_x"]
     npts_y = result["npts_y"]
-    d1 = result["d1"][npts_y // 2 :: npts_y]
+    d1 = np.linspace(0, result["dist"], npts_x)
     height = result["height"][npts_y // 2 :: npts_y]
 
     figure = go.Figure()
@@ -360,9 +355,9 @@ def update_graph_3d(
     npts_x = result["npts_x"]
     npts_y = result["npts_y"]
 
+    # Compute data slice window
     window_pts = int(round(npts_x / result["dist"] * window))
-    xi_mid = int(clickData["points"][0]["pointIndex"])
-    xi_start = xi_mid - window_pts // 2
+    xi_start = int(clickData["points"][0]["pointIndex"] - window_pts // 2)
     xi_end = xi_start + window_pts
 
     xi_start = max(xi_start, 0)
@@ -372,7 +367,17 @@ def update_graph_3d(
     data_start = xi_start * npts_y
     data_end = xi_end * npts_y
 
-    d1 = result["d1"][data_start:data_end]
+    # Compute d1 distance falues
+    t_start = xi_start / npts_x
+    t_end = (xi_end - 1) / npts_x
+    d1 = np.repeat(
+        np.linspace(
+            t_start * result["dist"], t_end * result["dist"], window_pts
+        ),
+        npts_y,
+    )
+
+    # Extract result data slices
     offset = result["offset"][data_start:data_end]
     height = result["height"][data_start:data_end]
     color = result["color"][data_start:data_end]
@@ -401,21 +406,18 @@ def update_graph_3d(
     )
     fresnel_steps_y = int(config["dashboard"]["fresnel_steps_y"])
 
-    height_start = result["height_start"] + gateway_offset
-    height_end = result["height_end"] + node_offset
+    gateway_height = result["height_start"] + gateway_offset
+    node_height = result["height_end"] + node_offset
 
-    t0 = d1[0] / result["dist"]
-    t1 = d1[-1] / result["dist"]
-
-    height0 = lerp(height_start, height_end, t0)
-    height1 = lerp(height_start, height_end, t1)
+    height_start = lerp(gateway_height, node_height, t_start)
+    height_end = lerp(gateway_height, node_height, t_end)
 
     x, y, z = [], [], []
     angles = np.arange(fresnel_steps_y) / fresnel_steps_y * np.pi * 2.0
     angles_cos = np.cos(angles)
     angles_sin = np.sin(angles)
     for h, d in zip(
-        np.linspace(height0, height1, fresnel_steps_x),
+        np.linspace(height_start, height_end, fresnel_steps_x),
         np.linspace(d1[0], d1[-1], fresnel_steps_x),
     ):
         r = fresnel_zone_radius(d, result["dist"] - d, frequency)
@@ -430,7 +432,7 @@ def update_graph_3d(
     # Draw ring around fresnel at clicked point
     d1_click = clickData["points"][0]["x"]
     t_click = d1_click / result["dist"]
-    h_click = lerp(height_start, height_end, t_click)
+    h_click = lerp(gateway_height, node_height, t_click)
     r_click = fresnel_zone_radius(
         d1_click, result["dist"] - d1_click, frequency
     )
@@ -488,7 +490,7 @@ navbar = dbc.NavbarSimple(
                 href="https://github.com/SimonLarsen/loralos",
                 className="fab fa-github p-0",
                 style={"font-size": "24px"},
-                target="_blank"
+                target="_blank",
             )
         ),
         dbc.NavItem(
@@ -496,9 +498,9 @@ navbar = dbc.NavbarSimple(
                 href="https://hub.docker.com/repository/docker/simonlarsen/loralos",
                 className="fab fa-docker p-0",
                 style={"font-size": "24px"},
-                target="_blank"
+                target="_blank",
             )
-        )
+        ),
     ],
     brand_href="#",
     fluid=True,
@@ -753,11 +755,13 @@ container = dbc.Container(
     fluid=True,
 )
 
-app.layout = html.Div([
-    navbar,
-    container,
-    dcc.Store(id="data", storage_type="session")
-])
+app.layout = html.Div(
+    [
+        navbar,
+        container,
+        dcc.Store(id="data", storage_type="memory", clear_data=True),
+    ]
+)
 
 
 if __name__ == "__main__":
