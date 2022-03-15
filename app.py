@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from flask_caching import Cache
 
 import os
+import argparse
 import configparser
 import numpy as np
 import pandas as pd
@@ -20,15 +21,17 @@ class DistanceExceededError(Exception):
     pass
 
 
+VERSION = "0.0.2"
 PLOT_HEIGHT_2D = 250
 PLOT_HEIGHT_3D = 400
 MARGIN_NONE = dict(t=0, r=0, b=0, l=0)
 MAX_DISTANCE = 50000
 
-config = configparser.ConfigParser()
-config.read("config.defaults.ini")
-if os.path.exists("config.ini"):
-    config.read("config.ini")
+config = configparser.ConfigParser(
+    defaults=os.environ,
+    interpolation=configparser.ExtendedInterpolation()
+)
+config.read("config.ini")
 
 theme_url = getattr(dbc.themes, config["dashboard"]["theme"].upper())
 app = dash.Dash(
@@ -36,9 +39,9 @@ app = dash.Dash(
 )
 app.title = "LoRaWAN line of sight helper"
 
-WMS_CACHE_DIR = tempfile.TemporaryDirectory(prefix="wms_cache")
-WCS_CACHE_DIR = tempfile.TemporaryDirectory(prefix="wcs_cache")
-FLASK_CACHE_DIR = tempfile.TemporaryDirectory(prefix="flaskcache")
+WMS_CACHE_DIR = tempfile.TemporaryDirectory(prefix="wms_cache_")
+WCS_CACHE_DIR = tempfile.TemporaryDirectory(prefix="wcs_cache_")
+FLASK_CACHE_DIR = tempfile.TemporaryDirectory(prefix="flaskcache_")
 
 cache = Cache(
     app.server,
@@ -723,7 +726,7 @@ container = dbc.Container(
             ),
             html.Footer(
                 html.Small(
-                    "Energinet | LoRaWAN line of sight helper",
+                    f"Energinet | LoRaWAN line of sight helper | Version {VERSION}",
                     className="text-muted",
                 ),
                 className="border-top py-3",
@@ -737,5 +740,10 @@ app.layout = html.Div([navbar, container, dcc.Store(id="data")])
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-p", "--port", type=int, default=80)
+    parser.add_argument("-d", "--debug", action="store_true")
+    args = parser.parse_args()
+
     cache.clear()
-    app.run_server(debug=True)
+    app.run_server(host="0.0.0.0", port=args.port, debug=args.debug)

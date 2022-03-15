@@ -6,9 +6,7 @@ from typing import List
 from pathlib import Path
 
 
-FORMAT_ENDINGS = {
-    "GTiff": "tif"
-}
+FORMAT_ENDINGS = {"GTiff": "tif"}
 
 
 class WCSHeightMap:
@@ -20,7 +18,7 @@ class WCSHeightMap:
         tile_size: int = 1000,
         resolution: int = 500,
         format: str = "GTiff",
-        crs: str = "epsg:25832"
+        crs: str = "epsg:25832",
     ):
         self.url = url
         self.layer = layer
@@ -32,9 +30,7 @@ class WCSHeightMap:
 
         self.wcs = WebCoverageService(self.url)
         self.trans = pyproj.Transformer.from_crs(
-            "wgs84",
-            self.crs,
-            always_xy=True
+            "wgs84", self.crs, always_xy=True
         )
         self.cached_file = None
         self.cached_image = None
@@ -44,13 +40,10 @@ class WCSHeightMap:
         ty = int(y // self.tile_size) * self.tile_size
         bbox = (tx, ty, tx + self.tile_size, ty + self.tile_size)
 
-        cache_file = (
-            Path(self.cache_dir) /
-            (
-                f"wcs_{self.layer}_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}"
-                f"_{self.tile_size}_{self.resolution}"
-                f".{FORMAT_ENDINGS[self.format]}"
-            )
+        cache_file = Path(self.cache_dir) / (
+            f"wcs_{self.layer}_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}"
+            f"_{self.tile_size}_{self.resolution}"
+            f".{FORMAT_ENDINGS[self.format]}"
         )
         if not os.path.exists(cache_file):
             res = self.wcs.getCoverage(
@@ -69,11 +62,7 @@ class WCSHeightMap:
         self.cached_file = rasterio.open(cache_file)
         self.cached_image = self.cached_file.read(1)
 
-    def get_heights(
-        self,
-        lons: List[float],
-        lats: List[float]
-    ) -> List[float]:
+    def get_heights(self, lons: List[float], lats: List[float]) -> List[float]:
         points = [None] * len(lons)
         tiles = [None] * len(lons)
         for i in range(len(lons)):
@@ -83,10 +72,10 @@ class WCSHeightMap:
             tx = int(x // self.tile_size * self.tile_size)
             ty = int(y // self.tile_size * self.tile_size)
             tiles[i] = (tx, ty)
-        
+
         order = list(range(len(lons)))
         order.sort(key=lambda i: tiles[i])
-    
+
         prev_tile = None
         out = [None] * len(lons)
         for i in order:
@@ -94,7 +83,7 @@ class WCSHeightMap:
             if tile != prev_tile:
                 self.load_tile(*tile)
                 prev_tile = tile
-            
+
             x, y = points[i]
             row, col = self.cached_file.index(x, y)
             out[i] = self.cached_image[row, col]
