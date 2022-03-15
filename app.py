@@ -35,7 +35,9 @@ config.read("config.ini")
 
 theme_url = getattr(dbc.themes, config["dashboard"]["theme"].upper())
 app = dash.Dash(
-    __name__, external_stylesheets=[theme_url], prevent_initial_callbacks=True
+    __name__,
+    external_stylesheets=[theme_url, dbc.icons.FONT_AWESOME],
+    prevent_initial_callbacks=True
 )
 app.title = "LoRaWAN line of sight helper"
 
@@ -217,7 +219,6 @@ def update_graph_2d(data, gateway_offset, node_offset, frequency):
         return placeholder_figure("", PLOT_HEIGHT_2D), None
 
     result = data["result"]
-    params = data["params"]
 
     npts_y = result["npts_y"]
     d1 = result["d1"][npts_y // 2 :: npts_y]
@@ -293,7 +294,6 @@ def update_graph_cross(
         )
 
     result = data["result"]
-    params = data["params"]
 
     data_start = result["npts_y"] * clickData["points"][0]["pointIndex"]
     data_end = data_start + result["npts_y"]
@@ -357,7 +357,6 @@ def update_graph_3d(
         )
 
     result = data["result"]
-    params = data["params"]
     npts_x = result["npts_x"]
     npts_y = result["npts_y"]
 
@@ -483,6 +482,24 @@ def placeholder_figure(text: str = "", height: int = 100):
 
 navbar = dbc.NavbarSimple(
     brand="LoRaWAN line of sight helper",
+    children=[
+        dbc.NavItem(
+            dbc.NavLink(
+                href="https://github.com/SimonLarsen/loralos",
+                className="fab fa-github p-0",
+                style={"font-size": "24px"},
+                target="_blank"
+            )
+        ),
+        dbc.NavItem(
+            dbc.NavLink(
+                href="https://hub.docker.com/repository/docker/simonlarsen/loralos",
+                className="fab fa-docker p-0",
+                style={"font-size": "24px"},
+                target="_blank"
+            )
+        )
+    ],
     brand_href="#",
     fluid=True,
     dark=True,
@@ -736,7 +753,11 @@ container = dbc.Container(
     fluid=True,
 )
 
-app.layout = html.Div([navbar, container, dcc.Store(id="data")])
+app.layout = html.Div([
+    navbar,
+    container,
+    dcc.Store(id="data", storage_type="session")
+])
 
 
 if __name__ == "__main__":
