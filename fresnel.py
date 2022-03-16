@@ -16,7 +16,7 @@ def fresnel_zone_radius(d1: float, d2: float, f: float, n: int = 1) -> float:
         Distance from second antenna to point in meters.
     f : float
         Frequency in GHz.
-    
+
     Returns
     -------
     float
