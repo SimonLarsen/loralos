@@ -3,6 +3,7 @@ from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 from flask_caching import Cache
+from dash.exceptions import PreventUpdate
 
 import os
 import argparse
@@ -345,9 +346,7 @@ def update_graph_3d(
     window,
 ):
     if not enable_graph_3d:
-        return placeholder_figure(
-            "3D terrain view is disabled", PLOT_HEIGHT_3D
-        )
+        raise PreventUpdate
 
     if data is None:
         return placeholder_figure("", PLOT_HEIGHT_3D)

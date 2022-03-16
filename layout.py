@@ -147,8 +147,7 @@ def build_layout(stations: pd.DataFrame):
                 ),
             ],
             sm=4,
-            lg=3,
-            xl=2,
+            xl=3,
         ),
         dbc.Col(
             [
@@ -168,8 +167,7 @@ def build_layout(stations: pd.DataFrame):
                 ),
             ],
             sm=4,
-            lg=3,
-            xl=2,
+            xl=3,
         ),
         dbc.Col(
             [
@@ -188,8 +186,7 @@ def build_layout(stations: pd.DataFrame):
                 ),
             ],
             sm=4,
-            lg=3,
-            xl=2,
+            xl=3,
         ),
     ]
 
@@ -214,8 +211,7 @@ def build_layout(stations: pd.DataFrame):
                 ),
             ],
             sm=4,
-            lg=3,
-            xl=2,
+            xl=3,
         )
     ]
 
@@ -277,14 +273,7 @@ def build_layout(stations: pd.DataFrame):
                             [
                                 dbc.Row(graph_3d_controls, className="mb-3"),
                                 html.Div(
-                                    dcc.Loading(
-                                        dcc.Graph(
-                                            id="graph_3d",
-                                            figure=placeholder_figure(
-                                                "", PLOT_HEIGHT_3D
-                                            ),
-                                        )
-                                    ),
+                                    dcc.Loading(dcc.Graph(id="graph_3d")),
                                     className="border",
                                 ),
                             ],
