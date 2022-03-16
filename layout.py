@@ -2,9 +2,9 @@ from dash import html, dcc
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import pandas as pd
+from __version__ import __version__ as VERSION
 
 
-VERSION = "0.0.2"
 PLOT_HEIGHT_2D = 250
 PLOT_HEIGHT_3D = 400
 PLOT_MARGIN = dict(t=0, r=0, b=0, l=0)

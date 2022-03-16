@@ -1,7 +1,7 @@
 Changelog
 ---------
 
-## Development
+## 0.0.3
 
 * Various improvements to dashboard layout.
 * Reduced size of session data stored in browser.
