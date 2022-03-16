@@ -63,7 +63,7 @@ def lerp(a, b, t):
 @cache.memoize(timeout=600)
 def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
     geod = pyproj.Geod(ellps="clrk66")
-    azi1, azi2, dist = geod.inv(lon1, lat1, lon2, lat2)
+    azi12, azi21, dist = geod.inv(lon1, lat1, lon2, lat2)
     if dist > MAX_DISTANCE:
         raise DistanceExceededError
 
@@ -132,6 +132,8 @@ def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
 
     return dict(
         dist=dist,
+        azi_fwd=azi12,
+        azi_bwd=azi21,
         npts_x=npts_x,
         npts_y=npts_y,
         offset=out_offset,
@@ -224,7 +226,7 @@ def update_graph_2d(data, gateway_offset, node_offset, frequency):
     npts_x = result["npts_x"]
     npts_y = result["npts_y"]
     d1 = np.linspace(0, result["dist"], npts_x)
-    height = result["height"][npts_y // 2::npts_y]
+    height = result["height"][npts_y // 2 :: npts_y]
 
     figure = go.Figure()
     figure.add_trace(
@@ -463,6 +465,20 @@ def update_graph_3d(
     )
 
     return figure
+
+
+@app.callback(
+    Output("session_distance", "children"),
+    Output("session_azimuth", "children"),
+    Input("data", "data"),
+)
+def update_session_info(data):
+    if data is None:
+        raise PreventUpdate
+
+    result = data["result"]
+
+    return (f"{result['dist']:.1f} meters", f"{result['azi_fwd']:.2f} °")
 
 
 @app.callback(

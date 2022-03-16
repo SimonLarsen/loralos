@@ -221,6 +221,26 @@ def build_layout(stations: pd.DataFrame):
                 dbc.Col(sidebar, md=3, lg=2),
                 dbc.Col(
                     [
+                        html.H5("Session info"),
+                        html.Ul(
+                            [
+                                html.Li(
+                                    [
+                                        html.B("Distance: "),
+                                        html.Span(
+                                            "N/A", id="session_distance"
+                                        ),
+                                    ]
+                                ),
+                                html.Li(
+                                    [
+                                        html.B("Azimuth angle: "),
+                                        html.Span("N/A", id="session_azimuth"),
+                                    ]
+                                ),
+                            ],
+                            className="list-unstyled",
+                        ),
                         html.H5("Fresnel zone"),
                         dbc.Row(fresnel_zone_controls, className="mb-3"),
                         dbc.Row(
