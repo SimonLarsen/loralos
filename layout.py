@@ -234,7 +234,7 @@ def build_layout(stations: pd.DataFrame):
                                 ),
                                 html.Li(
                                     [
-                                        html.B("Azimuth angle: "),
+                                        html.B("North azimuth: "),
                                         html.Span("N/A", id="session_azimuth"),
                                     ]
                                 ),
@@ -257,7 +257,14 @@ def build_layout(stations: pd.DataFrame):
                                                     ),
                                                 )
                                             ),
-                                            className="border",
+                                            className="border mb-2",
+                                        ),
+                                        html.P(
+                                            [
+                                                "Clicked point: ",
+                                                html.A("N/A", id="link_clicked_point", target="_blank"),
+                                                html.I(className="fas fa-map-marked-alt ms-1"),
+                                            ]
                                         ),
                                     ],
                                     lg=9,
@@ -276,7 +283,6 @@ def build_layout(stations: pd.DataFrame):
                                             ),
                                             className="border",
                                         ),
-                                        html.P(id="test"),
                                     ],
                                     lg=3,
                                 ),

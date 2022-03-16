@@ -131,9 +131,15 @@ def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
     height_end = out_height[int((npts_x - 1) * npts_y + npts_y // 2)]
 
     return dict(
+        lon1=lon1,
+        lat1=lat1,
+        lon2=lon2,
+        lat2=lat2,
+        spm=spm,
+        view_width=view_width,
+        azi12=azi12,
+        azi21=azi21,
         dist=dist,
-        azi_fwd=azi12,
-        azi_bwd=azi21,
         npts_x=npts_x,
         npts_y=npts_y,
         offset=out_offset,
@@ -181,7 +187,7 @@ def update_data(
     lon2, lat2 = stations.query("station == @node_id").iloc[0][["lon", "lat"]]
 
     try:
-        result = generate_data(lon1, lat1, lon2, lat2, spm, view_width)
+        data = generate_data(lon1, lat1, lon2, lat2, spm, view_width)
     except DistanceExceededError:
         return (
             None,
@@ -193,19 +199,6 @@ def update_data(
             True,
         )
 
-    data = dict(
-        params=dict(
-            gateway_id=gateway_id,
-            node_id=node_id,
-            spm=spm,
-            view_width=view_width,
-            lon1=lon1,
-            lat1=lat1,
-            lon2=lon2,
-            lat2=lat2,
-        ),
-        result=result,
-    )
     return data, "", "", False
 
 
@@ -221,12 +214,10 @@ def update_graph_2d(data, gateway_offset, node_offset, frequency):
     if data is None:
         return placeholder_figure("", PLOT_HEIGHT_2D), None
 
-    result = data["result"]
-
-    npts_x = result["npts_x"]
-    npts_y = result["npts_y"]
-    d1 = np.linspace(0, result["dist"], npts_x)
-    height = result["height"][npts_y // 2 :: npts_y]
+    npts_x = data["npts_x"]
+    npts_y = data["npts_y"]
+    d1 = np.linspace(0, data["dist"], npts_x)
+    height = data["height"][npts_y // 2 :: npts_y]
 
     figure = go.Figure()
     figure.add_trace(
@@ -239,16 +230,16 @@ def update_graph_2d(data, gateway_offset, node_offset, frequency):
         )
     )
 
-    gateway_height = result["height_start"] + gateway_offset
-    node_height = result["height_end"] + node_offset
+    gateway_height = data["height_start"] + gateway_offset
+    node_height = data["height_end"] + node_offset
 
     fresnel_steps_x = int(
-        round(result["dist"] * float(config["dashboard"]["fresnel_ppm_x"]))
+        round(data["dist"] * float(config["dashboard"]["fresnel_ppm_x"]))
     )
 
-    d1 = np.linspace(0, result["dist"], fresnel_steps_x)
+    d1 = np.linspace(0, data["dist"], fresnel_steps_x)
     h = np.linspace(gateway_height, node_height, fresnel_steps_x)
-    r = fresnel_zone_radius(d1, result["dist"] - d1, frequency)
+    r = fresnel_zone_radius(d1, data["dist"] - d1, frequency)
 
     figure.add_traces(
         [
@@ -297,19 +288,17 @@ def update_graph_cross(
             "Click height curve to show cross section", PLOT_HEIGHT_2D
         )
 
-    result = data["result"]
-
-    data_start = result["npts_y"] * clickData["points"][0]["pointIndex"]
-    data_end = data_start + result["npts_y"]
+    data_start = data["npts_y"] * clickData["points"][0]["pointIndex"]
+    data_end = data_start + data["npts_y"]
 
     d1 = clickData["points"][0]["x"]
-    r = fresnel_zone_radius(d1, result["dist"] - d1, frequency)
-    height = result["height"][data_start:data_end]
-    offset = result["offset"][data_start:data_end]
+    r = fresnel_zone_radius(d1, data["dist"] - d1, frequency)
+    height = data["height"][data_start:data_end]
+    offset = data["offset"][data_start:data_end]
 
-    gateway_height = result["height_start"] + gateway_offset
-    node_height = result["height_end"] + node_offset
-    t = d1 / result["dist"]
+    gateway_height = data["height_start"] + gateway_offset
+    node_height = data["height_end"] + node_offset
+    t = d1 / data["dist"]
     los_height = lerp(gateway_height, node_height, t)
 
     figure = go.Figure()
@@ -358,12 +347,11 @@ def update_graph_3d(
             "Click height curve to show cross section", PLOT_HEIGHT_3D
         )
 
-    result = data["result"]
-    npts_x = result["npts_x"]
-    npts_y = result["npts_y"]
+    npts_x = data["npts_x"]
+    npts_y = data["npts_y"]
 
     # Compute data slice window
-    window_pts = int(round(npts_x / result["dist"] * window))
+    window_pts = int(round(npts_x / data["dist"] * window))
     xi_start = int(clickData["points"][0]["pointIndex"] - window_pts // 2)
     xi_end = xi_start + window_pts
 
@@ -379,18 +367,18 @@ def update_graph_3d(
     t_end = (xi_end - 1) / npts_x
     d1 = np.repeat(
         np.linspace(
-            t_start * result["dist"], t_end * result["dist"], window_pts
+            t_start * data["dist"], t_end * data["dist"], window_pts
         ),
         npts_y,
     )
 
     # Extract result data slices
-    offset = result["offset"][data_start:data_end]
-    height = result["height"][data_start:data_end]
-    color = result["color"][data_start:data_end]
+    offset = data["offset"][data_start:data_end]
+    height = data["height"][data_start:data_end]
+    color = data["color"][data_start:data_end]
 
     # Add 3D terrain trace
-    t1, t2, t3 = generate_mesh_indices(window_pts, result["npts_y"])
+    t1, t2, t3 = generate_mesh_indices(window_pts, data["npts_y"])
     color_rgb = ["#{:02x}{:02x}{:02x}".format(*c) for c in color]
 
     figure = go.Figure()
@@ -413,8 +401,8 @@ def update_graph_3d(
     )
     fresnel_steps_y = int(config["dashboard"]["fresnel_steps_y"])
 
-    gateway_height = result["height_start"] + gateway_offset
-    node_height = result["height_end"] + node_offset
+    gateway_height = data["height_start"] + gateway_offset
+    node_height = data["height_end"] + node_offset
 
     height_start = lerp(gateway_height, node_height, t_start)
     height_end = lerp(gateway_height, node_height, t_end)
@@ -427,7 +415,7 @@ def update_graph_3d(
         np.linspace(height_start, height_end, fresnel_steps_x),
         np.linspace(d1[0], d1[-1], fresnel_steps_x),
     ):
-        r = fresnel_zone_radius(d, result["dist"] - d, frequency)
+        r = fresnel_zone_radius(d, data["dist"] - d, frequency)
         x.extend(np.repeat(d, len(angles)))
         y.extend(angles_cos * r)
         z.extend(h + angles_sin * r)
@@ -438,10 +426,10 @@ def update_graph_3d(
 
     # Draw ring around fresnel at clicked point
     d1_click = clickData["points"][0]["x"]
-    t_click = d1_click / result["dist"]
+    t_click = d1_click / data["dist"]
     h_click = lerp(gateway_height, node_height, t_click)
     r_click = fresnel_zone_radius(
-        d1_click, result["dist"] - d1_click, frequency
+        d1_click, data["dist"] - d1_click, frequency
     )
     angles = np.linspace(0, 2.0 * np.pi, fresnel_steps_y + 1)
     figure.add_trace(
@@ -476,9 +464,33 @@ def update_session_info(data):
     if data is None:
         raise PreventUpdate
 
-    result = data["result"]
+    return (f"{data['dist']:.1f} meters", f"{data['azi12']:.2f} °")
 
-    return (f"{result['dist']:.1f} meters", f"{result['azi_fwd']:.2f} °")
+
+@app.callback(
+    Output("link_clicked_point", "children"),
+    Output("link_clicked_point", "href"),
+    Input("data", "data"),
+    Input("graph_2d", "clickData"),
+)
+def update_link_clicked_point(data, clickData):
+    if data is None:
+        return "N/A", None
+        raise PreventUpdate
+
+    if clickData is None or len(clickData["points"]) == 0:
+        return "N/A", None
+    
+    d1 = clickData["points"][0]["x"]
+    azi12 = data["azi12"]
+    lon1, lat1 = data["lon1"], data["lat1"]
+
+    g = pyproj.Geod(ellps="clrk66")
+    lon, lat, azi_bwd = g.fwd(lon1, lat1, azi12, d1)
+
+    text = f"{lat:.5f}, {lon:.5f}"
+    url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+    return text, url
 
 
 @app.callback(
