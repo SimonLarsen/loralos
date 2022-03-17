@@ -1,4 +1,5 @@
 import dash
+from dash import html
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
@@ -58,6 +59,14 @@ stations = pd.read_csv(config["dashboard"]["stations"])
 
 def lerp(a, b, t):
     return t * b + (1.0 - t) * a
+
+
+def google_maps_link(lat, lon):
+    return html.A(
+        f"{lat:.5f}, {lon:.5f}",
+        href=f"https://www.google.com/maps/search/?api=1&query={lat},{lon}",
+        target="_blank",
+    )
 
 
 @cache.memoize(timeout=600)
@@ -366,9 +375,7 @@ def update_graph_3d(
     t_start = xi_start / npts_x
     t_end = (xi_end - 1) / npts_x
     d1 = np.repeat(
-        np.linspace(
-            t_start * data["dist"], t_end * data["dist"], window_pts
-        ),
+        np.linspace(t_start * data["dist"], t_end * data["dist"], window_pts),
         npts_y,
     )
 
@@ -428,9 +435,7 @@ def update_graph_3d(
     d1_click = clickData["points"][0]["x"]
     t_click = d1_click / data["dist"]
     h_click = lerp(gateway_height, node_height, t_click)
-    r_click = fresnel_zone_radius(
-        d1_click, data["dist"] - d1_click, frequency
-    )
+    r_click = fresnel_zone_radius(d1_click, data["dist"] - d1_click, frequency)
     angles = np.linspace(0, 2.0 * np.pi, fresnel_steps_y + 1)
     figure.add_trace(
         go.Scatter3d(
@@ -456,31 +461,37 @@ def update_graph_3d(
 
 
 @app.callback(
+    Output("session_gateway_location", "children"),
+    Output("session_node_location", "children"),
     Output("session_distance", "children"),
     Output("session_azimuth", "children"),
+    Output("session_compass", "style"),
     Input("data", "data"),
 )
 def update_session_info(data):
     if data is None:
-        raise PreventUpdate
+        return "N/A", "N/A", "N/A", "N/A", {"visibility": "hidden"}
 
-    return (f"{data['dist']:.1f} meters", f"{data['azi12']:.2f} °")
+    gateway_loc = google_maps_link(data["lat1"], data["lon1"])
+    node_loc = google_maps_link(data["lat2"], data["lon2"])
+    distance = f"{data['dist']:.1f} meters"
+    azimuth = f"{data['azi12']:.2f} °"
+    compass = {"transform": f"rotate({-data['azi12']}deg)"}
+    return gateway_loc, node_loc, distance, azimuth, compass
 
 
 @app.callback(
     Output("link_clicked_point", "children"),
-    Output("link_clicked_point", "href"),
     Input("data", "data"),
     Input("graph_2d", "clickData"),
 )
 def update_link_clicked_point(data, clickData):
     if data is None:
         return "N/A", None
-        raise PreventUpdate
 
     if clickData is None or len(clickData["points"]) == 0:
         return "N/A", None
-    
+
     d1 = clickData["points"][0]["x"]
     azi12 = data["azi12"]
     lon1, lat1 = data["lon1"], data["lat1"]
@@ -488,9 +499,7 @@ def update_link_clicked_point(data, clickData):
     g = pyproj.Geod(ellps="clrk66")
     lon, lat, azi_bwd = g.fwd(lon1, lat1, azi12, d1)
 
-    text = f"{lat:.5f}, {lon:.5f}"
-    url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
-    return text, url
+    return google_maps_link(lat, lon)
 
 
 @app.callback(
@@ -500,7 +509,7 @@ def update_collapse_graph_3d(enable_graph_3d):
     return enable_graph_3d
 
 
-app.layout = build_layout(stations)
+app.layout = build_layout(app, stations)
 
 
 if __name__ == "__main__":

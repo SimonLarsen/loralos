@@ -34,7 +34,7 @@ def placeholder_figure(text: str = "", height: int = 100) -> go.Figure:
     return figure
 
 
-def build_layout(stations: pd.DataFrame):
+def build_layout(app, stations: pd.DataFrame):
     navbar = dbc.NavbarSimple(
         brand="LoRaWAN line of sight helper",
         children=[
@@ -146,8 +146,7 @@ def build_layout(stations: pd.DataFrame):
                     ]
                 ),
             ],
-            sm=4,
-            xl=3,
+            md=4,
         ),
         dbc.Col(
             [
@@ -166,8 +165,7 @@ def build_layout(stations: pd.DataFrame):
                     ]
                 ),
             ],
-            sm=4,
-            xl=3,
+            md=4,
         ),
         dbc.Col(
             [
@@ -185,8 +183,7 @@ def build_layout(stations: pd.DataFrame):
                     ]
                 ),
             ],
-            sm=4,
-            xl=3,
+            md=4,
         ),
     ]
 
@@ -210,43 +207,100 @@ def build_layout(stations: pd.DataFrame):
                     ]
                 ),
             ],
-            sm=4,
-            xl=3,
+            md=4,
         )
     ]
 
     container = dbc.Container(
-        dbc.Row(
+        fluid=True,
+        children=dbc.Row(
             [
-                dbc.Col(sidebar, md=3, lg=2),
+                dbc.Col(sidebar, md=3, xl=2),
                 dbc.Col(
-                    [
+                    md=9,
+                    xl=10,
+                    children=[
                         html.H5("Session info"),
-                        html.Ul(
+                        html.Div(
                             [
-                                html.Li(
-                                    [
-                                        html.B("Distance: "),
-                                        html.Span(
-                                            "N/A", id="session_distance"
+                                html.Div(
+                                    html.Div(
+                                        html.Div(
+                                            style={
+                                                "width": "128px",
+                                                "height": "128px",
+                                                "background-image": f"url(\"{app.get_asset_url('compass_fg.png')}\")",
+                                                "background-size": "cover",
+                                            }
                                         ),
-                                    ]
+                                        id="session_compass",
+                                        style={"visibility": "hidden"},
+                                    ),
+                                    className="me-3",
+                                    style={
+                                        "width": "128px",
+                                        "height": "128px",
+                                        "background-image": f"url(\"{app.get_asset_url('compass_bg.png')}\")",
+                                        "background-size": "cover",
+                                    },
                                 ),
-                                html.Li(
-                                    [
-                                        html.B("North azimuth: "),
-                                        html.Span("N/A", id="session_azimuth"),
-                                    ]
+                                html.Div(
+                                    html.Ul(
+                                        [
+                                            html.Li(
+                                                [
+                                                    html.B(
+                                                        "Gateway location: "
+                                                    ),
+                                                    html.Span(
+                                                        "N/A",
+                                                        id="session_gateway_location",
+                                                    ),
+                                                ]
+                                            ),
+                                            html.Li(
+                                                [
+                                                    html.B(
+                                                        "Gateway location: "
+                                                    ),
+                                                    html.Span(
+                                                        "N/A",
+                                                        id="session_node_location",
+                                                    ),
+                                                ]
+                                            ),
+                                            html.Li(
+                                                [
+                                                    html.B("Distance: "),
+                                                    html.Span(
+                                                        "N/A",
+                                                        id="session_distance",
+                                                    ),
+                                                ]
+                                            ),
+                                            html.Li(
+                                                [
+                                                    html.B("North azimuth: "),
+                                                    html.Span(
+                                                        "N/A",
+                                                        id="session_azimuth",
+                                                    ),
+                                                ]
+                                            ),
+                                        ],
+                                        className="list-unstyled",
+                                    ),
                                 ),
                             ],
-                            className="list-unstyled",
+                            className="d-flex mb-3",
                         ),
                         html.H5("Fresnel zone"),
                         dbc.Row(fresnel_zone_controls, className="mb-3"),
                         dbc.Row(
                             [
                                 dbc.Col(
-                                    [
+                                    md=9,
+                                    children=[
                                         html.H5("Height curve"),
                                         html.Div(
                                             dcc.Loading(
@@ -262,15 +316,18 @@ def build_layout(stations: pd.DataFrame):
                                         html.P(
                                             [
                                                 "Clicked point: ",
-                                                html.A("N/A", id="link_clicked_point", target="_blank"),
-                                                html.I(className="fas fa-map-marked-alt ms-1"),
+                                                html.A(
+                                                    "N/A",
+                                                    id="link_clicked_point",
+                                                    target="_blank",
+                                                ),
                                             ]
                                         ),
                                     ],
-                                    lg=9,
                                 ),
                                 dbc.Col(
-                                    [
+                                    md=3,
+                                    children=[
                                         html.H5("Cross section"),
                                         html.Div(
                                             dcc.Loading(
@@ -284,7 +341,6 @@ def build_layout(stations: pd.DataFrame):
                                             className="border",
                                         ),
                                     ],
-                                    lg=3,
                                 ),
                             ],
                             className="mb-3",
@@ -307,8 +363,6 @@ def build_layout(stations: pd.DataFrame):
                             is_open=False,
                         ),
                     ],
-                    md=9,
-                    lg=10,
                     className="py-3",
                 ),
                 html.Footer(
@@ -323,7 +377,6 @@ def build_layout(stations: pd.DataFrame):
                 ),
             ]
         ),
-        fluid=True,
     )
 
     layout = html.Div(
