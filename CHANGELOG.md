@@ -1,6 +1,10 @@
 Changelog
 ---------
 
+## Development
+
+* Replaced Clarke '66 ellipsis model with WGS84 for precision.
+
 ## 0.0.4
 
 * Added compass showing direction from gateway.
