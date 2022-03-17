@@ -1,6 +1,12 @@
 Changelog
 ---------
 
+## Development
+
+* Added compass showing direction from gateway.
+* Added additional session info to top of page.
+* Tweaked layout column breakpoints.
+
 ## 0.0.3
 
 * Various improvements to dashboard layout.
