@@ -78,9 +78,8 @@ def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
         raise DistanceExceededError
 
     heightmap = WCSHeightMap(
-        url=config["heightmap"]["url"]
-        + "&token="
-        + config["heightmap"]["token"],
+        url=config["heightmap"]["url"],
+        token=config["heightmap"]["token"],
         layer=config["heightmap"]["layer"],
         tile_size=int(config["heightmap"]["tile_size"]),
         resolution=int(config["heightmap"]["resolution"]),
@@ -88,7 +87,8 @@ def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
     )
 
     image = WMSImage(
-        url=config["image"]["url"] + "&token=" + config["image"]["token"],
+        url=config["image"]["url"],
+        token=config["image"]["token"],
         layer=config["image"]["layer"],
         tile_size=int(config["image"]["tile_size"]),
         resolution=int(config["image"]["resolution"]),

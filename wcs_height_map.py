@@ -13,6 +13,7 @@ class WCSHeightMap:
     def __init__(
         self,
         url: str,
+        token: str,
         layer: str,
         cache_dir: str,
         tile_size: int = 1000,
@@ -21,6 +22,7 @@ class WCSHeightMap:
         crs: str = "epsg:25832",
     ):
         self.url = url
+        self.token = token
         self.layer = layer
         self.cache_dir = cache_dir
         self.tile_size = tile_size
@@ -28,7 +30,7 @@ class WCSHeightMap:
         self.format = format
         self.crs = crs
 
-        self.wcs = WebCoverageService(self.url)
+        self.wcs = WebCoverageService(self.url + "&token=" + self.token)
         self.trans = pyproj.Transformer.from_crs(
             "wgs84", self.crs, always_xy=True
         )

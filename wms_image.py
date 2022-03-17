@@ -13,6 +13,7 @@ class WMSImage:
     def __init__(
         self,
         url: str,
+        token: str,
         layer: str,
         cache_dir: str,
         style: str = "default",
@@ -22,6 +23,7 @@ class WMSImage:
         crs: str = "epsg:25832",
     ) -> None:
         self.url = url
+        self.token = token
         self.layer = layer
         self.cache_dir = cache_dir
         self.style = style
@@ -30,7 +32,7 @@ class WMSImage:
         self.format = format
         self.crs = crs
 
-        self.wms = WebMapService(self.url)
+        self.wms = WebMapService(self.url + "&token=" + self.token)
         self.trans = pyproj.Transformer.from_crs(
             "wgs84", self.crs, always_xy=True
         )
