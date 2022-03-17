@@ -72,7 +72,7 @@ def google_maps_link(lat, lon):
 
 @cache.memoize(timeout=600)
 def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
-    geod = pyproj.Geod(ellps="clrk66")
+    geod = pyproj.Geod(ellps="WGS84")
     azi12, azi21, dist = geod.inv(lon1, lat1, lon2, lat2)
     if dist > MAX_DISTANCE:
         raise DistanceExceededError
@@ -483,7 +483,7 @@ def update_link_clicked_point(data, clickData):
     azi12 = data["azi12"]
     lon1, lat1 = data["lon1"], data["lat1"]
 
-    g = pyproj.Geod(ellps="clrk66")
+    g = pyproj.Geod(ellps="WGS84")
     lon, lat, azi_bwd = g.fwd(lon1, lat1, azi12, d1)
 
     return google_maps_link(lat, lon)
