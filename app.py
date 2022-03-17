@@ -9,13 +9,14 @@ from dash.exceptions import PreventUpdate
 import os
 import argparse
 import configparser
+import tempfile
 import numpy as np
 import pandas as pd
 from wcs_height_map import WCSHeightMap
 from wms_image import WMSImage
 import pyproj
 from fresnel import fresnel_zone_radius
-import tempfile
+from geometry import plane_mesh_indices, tube_mesh_indices
 
 from layout import (
     build_layout,
@@ -157,23 +158,6 @@ def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
         height_start=height_start,
         height_end=height_end,
     )
-
-
-@cache.memoize(timeout=600)
-def generate_mesh_indices(n: int, m: int):
-    t1, t2, t3 = [], [], []
-    for i in range(n - 1):
-        for j in range(m - 1):
-            k = i * m + j
-
-            t1.append(k)
-            t2.append(k + m)
-            t3.append(k + 1)
-
-            t1.append(k + 1)
-            t2.append(k + m)
-            t3.append(k + m + 1)
-    return t1, t2, t3
 
 
 @app.callback(
@@ -385,7 +369,7 @@ def update_graph_3d(
     color = data["color"][data_start:data_end]
 
     # Add 3D terrain trace
-    t1, t2, t3 = generate_mesh_indices(window_pts, data["npts_y"])
+    t1, t2, t3 = plane_mesh_indices(window_pts, data["npts_y"])
     color_rgb = ["#{:02x}{:02x}{:02x}".format(*c) for c in color]
 
     figure = go.Figure()
@@ -426,9 +410,12 @@ def update_graph_3d(
         x.extend(np.repeat(d, len(angles)))
         y.extend(angles_cos * r)
         z.extend(h + angles_sin * r)
+    t1, t2, t3 = tube_mesh_indices(fresnel_steps_x, fresnel_steps_y)
 
     figure.add_trace(
-        go.Mesh3d(x=x, y=y, z=z, alphahull=0, opacity=0.3, hoverinfo="none")
+        go.Mesh3d(
+            x=x, y=y, z=z, i=t1, j=t2, k=t3, opacity=0.3, hoverinfo="none"
+        )
     )
 
     # Draw ring around fresnel at clicked point

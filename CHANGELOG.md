@@ -6,6 +6,7 @@ Changelog
 * Added compass showing direction from gateway.
 * Added additional session info to top of page.
 * Tweaked layout column breakpoints.
+* Optimized 3D mesh index generation.
 
 ## 0.0.3
 
