@@ -3,7 +3,6 @@ from dash import html
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
-from flask_caching import Cache
 from dash.exceptions import PreventUpdate
 
 import os
@@ -48,21 +47,16 @@ app.title = "LoRaWAN line of sight helper"
 
 WMS_CACHE_DIR = tempfile.TemporaryDirectory(prefix="wms_cache_")
 WCS_CACHE_DIR = tempfile.TemporaryDirectory(prefix="wcs_cache_")
-FLASK_CACHE_DIR = tempfile.TemporaryDirectory(prefix="flaskcache_")
-
-cache = Cache(
-    app.server,
-    config={"CACHE_TYPE": "filesystem", "CACHE_DIR": FLASK_CACHE_DIR.name},
-)
 
 stations = pd.read_csv(config["dashboard"]["stations"])
 
 
 def lerp(a, b, t):
+    """Linear interpolation."""
     return t * b + (1.0 - t) * a
 
 
-def google_maps_link(lat, lon):
+def google_maps_link(lat: float, lon: float) -> html.A:
     return html.A(
         f"{lat:.5f}, {lon:.5f}",
         href=f"https://www.google.com/maps/search/?api=1&query={lat},{lon}",
@@ -70,7 +64,6 @@ def google_maps_link(lat, lon):
     )
 
 
-@cache.memoize(timeout=600)
 def generate_data(lon1, lat1, lon2, lat2, spm, view_width):
     geod = pyproj.Geod(ellps="WGS84")
     azi12, azi21, dist = geod.inv(lon1, lat1, lon2, lat2)
@@ -505,5 +498,4 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--debug", action="store_true")
     args = parser.parse_args()
 
-    cache.clear()
     app.run_server(host="0.0.0.0", port=args.port, debug=args.debug)

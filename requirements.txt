@@ -6,5 +6,4 @@ owslib
 numpy
 pandas
 orjson
-flask-caching
 Pillow
