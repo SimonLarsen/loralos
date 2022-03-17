@@ -1,7 +1,7 @@
 Changelog
 ---------
 
-## Development
+## 0.0.4
 
 * Added compass showing direction from gateway.
 * Added additional session info to top of page.
