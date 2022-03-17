@@ -214,7 +214,7 @@ def update_graph_2d(data, gateway_offset, node_offset, frequency):
 
     figure = go.Figure()
     figure.add_trace(
-        go.Scatter(
+        go.Scattergl(
             x=d1,
             y=height,
             name="Surface height",

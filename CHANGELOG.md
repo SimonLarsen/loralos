@@ -7,6 +7,7 @@ Changelog
 * Added additional session info to top of page.
 * Tweaked layout column breakpoints.
 * Optimized 3D mesh index generation.
+* Changed heightmap trace to use Scattergl (WebGL).
 
 ## 0.0.3
 
