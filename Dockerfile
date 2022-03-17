@@ -7,7 +7,8 @@ WORKDIR /app
 ADD requirements.txt /app/
 RUN pip install -r requirements.txt
 
-ADD *.py config.ini stations.csv /app/
+COPY *.py config.ini stations.csv /app/
+COPY assets/* /app/assets/
 
 ENTRYPOINT ["python"]
 CMD ["app.py", "-p", "80"]
