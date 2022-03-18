@@ -155,7 +155,8 @@ def update_graph_2d(data, gateway_offset, node_offset, frequency):
         height=PLOT_HEIGHT_2D,
         margin=PLOT_MARGIN,
         showlegend=False,
-        hovermode="x",
+        hovermode="closest",
+        hoverdistance=-1,
     )
     return figure, None
 
