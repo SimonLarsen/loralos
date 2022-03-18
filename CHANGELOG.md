@@ -3,7 +3,9 @@ Changelog
 
 ## Development
 
+* Fresnel zone calculation now takes Earth curvature into account.
 * Replaced Clarke '66 ellipsis model with WGS84 for precision.
+* Height curve hovers to nearest point instead to make it easier to select peaks.
 
 ## 0.0.4
 
