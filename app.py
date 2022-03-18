@@ -11,6 +11,7 @@ import configparser
 import numpy as np
 import pandas as pd
 import pyproj
+from geo import los_height_range, los_height_single
 from terrain import generate_data, DistanceExceededError
 from fresnel import fresnel_zone_radius
 from geometry import plane_mesh_indices, tube_mesh_indices
@@ -120,7 +121,15 @@ def update_graph_2d(data, gateway_offset, node_offset, frequency):
     )
 
     d1 = np.linspace(0, data["dist"], fresnel_steps_x)
-    h = np.linspace(gateway_height, node_height, fresnel_steps_x)
+    h = los_height_range(
+        data["lon1"],
+        data["lat1"],
+        gateway_height,
+        data["lon2"],
+        data["lat2"],
+        node_height,
+        fresnel_steps_x,
+    )
     r = fresnel_zone_radius(d1, data["dist"] - d1, frequency)
 
     figure.add_traces(
@@ -181,7 +190,15 @@ def update_graph_cross(
     gateway_height = data["height_start"] + gateway_offset
     node_height = data["height_end"] + node_offset
     t = d1 / data["dist"]
-    los_height = lerp(gateway_height, node_height, t)
+    los_height = los_height_single(
+        data["lon1"],
+        data["lat1"],
+        gateway_height,
+        data["lon2"],
+        data["lat2"],
+        node_height,
+        t,
+    )
 
     figure = go.Figure()
     figure.add_trace(go.Scatter(x=offset, y=height, mode="lines"))
@@ -237,6 +254,7 @@ def update_graph_3d(
     xi_start = int(clickData["points"][0]["pointIndex"] - window_pts // 2)
     xi_end = xi_start + window_pts
 
+    # Clamp values to range
     xi_start = max(xi_start, 0)
     xi_end = min(xi_end, npts_x - 1)
     window_pts = xi_end - xi_start
@@ -244,7 +262,7 @@ def update_graph_3d(
     data_start = xi_start * npts_y
     data_end = xi_end * npts_y
 
-    # Compute d1 distance falues
+    # Compute d1 distance values
     t_start = xi_start / npts_x
     t_end = (xi_end - 1) / npts_x
     d1 = np.repeat(
@@ -291,11 +309,21 @@ def update_graph_3d(
     angles = np.arange(fresnel_steps_y) / fresnel_steps_y * np.pi * 2.0
     angles_cos = np.cos(angles)
     angles_sin = np.sin(angles)
-    for h, d in zip(
-        np.linspace(height_start, height_end, fresnel_steps_x),
+    for t, d in zip(
+        np.linspace(t_start, t_end, fresnel_steps_x),
         np.linspace(d1[0], d1[-1], fresnel_steps_x),
     ):
+        h = los_height_single(
+            data["lon1"],
+            data["lat1"],
+            gateway_height,
+            data["lon2"],
+            data["lat2"],
+            node_height,
+            t,
+        )
         r = fresnel_zone_radius(d, data["dist"] - d, frequency)
+
         x.extend(np.repeat(d, len(angles)))
         y.extend(angles_cos * r)
         z.extend(h + angles_sin * r)
