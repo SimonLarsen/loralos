@@ -69,7 +69,7 @@ def build_layout(app, stations: pd.DataFrame):
                 [
                     dbc.Label("Gateway location", html_for="gateway_id"),
                     dbc.Select(
-                        id="gateway_id", options=options_stations, value="FGV"
+                        id="gateway_id", options=options_stations, value="FGV", required=True
                     ),
                 ],
                 className="mb-3",
@@ -78,7 +78,7 @@ def build_layout(app, stations: pd.DataFrame):
                 [
                     dbc.Label("Node location", html_for="node_id"),
                     dbc.Select(
-                        id="node_id", options=options_stations, value="FGD"
+                        id="node_id", options=options_stations, value="FGD", required=True
                     ),
                 ],
                 className="mb-3",
@@ -86,18 +86,13 @@ def build_layout(app, stations: pd.DataFrame):
             html.Div(
                 [
                     dbc.Label("Sample resolution", html_for="spm"),
-                    dbc.InputGroup(
-                        [
-                            dbc.Input(
-                                id="spm",
-                                type="number",
-                                min=0.01,
-                                max=2.0,
-                                value=0.8,
-                            ),
-                            dbc.InputGroupText("samples/m"),
-                        ]
-                    ),
+                    dcc.Slider(
+                        id="spm",
+                        min=0.2,
+                        max=1.0,
+                        value=0.8,
+                        marks={0.2: "20%", 0.6: "60%", 0.99: "100%"}
+                    )
                 ],
                 className="mb-3",
             ),
@@ -112,6 +107,7 @@ def build_layout(app, stations: pd.DataFrame):
                                 min=5,
                                 max=100,
                                 value=50,
+                                required=True
                             ),
                             dbc.InputGroupText("m"),
                         ]

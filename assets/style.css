@@ -1,0 +1,15 @@
+.rc-slider-track {
+    background-color: #3459e6;
+}
+
+.rc-slider-dot-active {
+    border-color: #3459e6;
+}
+
+.rc-slider-handle {
+    border-color: #3459e6;
+}
+
+.rc-slider-mark {
+    font-size: 14px;
+}

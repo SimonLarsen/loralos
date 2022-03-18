@@ -32,7 +32,11 @@ config.read("config.ini")
 theme_url = getattr(dbc.themes, config["dashboard"]["theme"].upper())
 app = dash.Dash(
     __name__,
-    external_stylesheets=[theme_url, dbc.icons.FONT_AWESOME],
+    external_stylesheets=[
+        theme_url,
+        dbc.icons.FONT_AWESOME,
+        "/assets/style.css"
+    ],
     prevent_initial_callbacks=True,
 )
 app.title = "LoRaWAN line of sight helper"
