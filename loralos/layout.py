@@ -13,6 +13,21 @@ DOCKER_URL = "https://hub.docker.com/repository/docker/simonlarsen/loralos"
 
 
 def placeholder_figure(text: str = "", height: int = 100) -> go.Figure:
+    """
+    Create empty figure with placeholder text.
+
+    Parameters
+    ----------
+    text : str
+        Placeholder text.
+    height : int
+        Figure height in pixels.
+
+    Returns
+    -------
+    go.Figure
+        Plotly Figure object.
+    """
     figure = go.Figure()
     figure.update_layout(
         height=height,
@@ -35,6 +50,16 @@ def placeholder_figure(text: str = "", height: int = 100) -> go.Figure:
 
 
 def build_layout(app, stations: pd.DataFrame):
+    """
+    Build Plotly dashboard layout.
+
+    Parameters
+    ----------
+    app : dash.Dash
+        Plotly Dash application.
+    stations : pd.DataFrame
+        Data frame with station information.
+    """
     navbar = dbc.NavbarSimple(
         brand="LoRaWAN line of sight helper",
         children=[

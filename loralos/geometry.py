@@ -2,6 +2,21 @@ import numpy as np
 
 
 def plane_mesh_indices(npts_x: int, npts_y: int):
+    """
+    Generate vertex indices for a triangle plane mesh.
+
+    Parameters
+    ----------
+    npts_x : int
+        Number of vertices on major axis.
+    npts_y : int
+        Number of vertices on minor axis.
+
+    Returns
+    -------
+    3-tuple of lists of integers
+        Vertex indices for triangles.
+    """
     v_x = np.repeat(np.arange(npts_x - 1), npts_y - 1)
     v_y = np.tile(np.arange(npts_y - 1), npts_x - 1)
     v = v_x * npts_y + v_y
@@ -13,6 +28,21 @@ def plane_mesh_indices(npts_x: int, npts_y: int):
 
 
 def tube_mesh_indices(npts_x: int, npts_y: int):
+    """
+    Generate vertex indices for tube mesh.
+
+    Parameters
+    ----------
+    npts_x : int
+        Number of vertices along tube length (major axis).
+    npts_y : int
+        Number of vertices around tube circumference (minor axis).
+
+    Returns
+    -------
+    3-tuple of lists of integers.
+        Vertex indices for triangles.
+    """
     v_x = np.repeat(np.arange(npts_x - 1), npts_y)
     v_y = np.tile(np.arange(npts_y), npts_x - 1)
     v = v_x * npts_y + v_y

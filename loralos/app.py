@@ -307,9 +307,6 @@ def update_graph_3d(
     gateway_height = data["height_start"] + gateway_offset
     node_height = data["height_end"] + node_offset
 
-    height_start = lerp(gateway_height, node_height, t_start)
-    height_end = lerp(gateway_height, node_height, t_end)
-
     x, y, z = [], [], []
     angles = np.arange(fresnel_steps_y) / fresnel_steps_y * np.pi * 2.0
     angles_cos = np.cos(angles)

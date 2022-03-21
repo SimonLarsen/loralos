@@ -3,6 +3,8 @@ import pyproj
 import numpy as np
 from wcs_height_map import WCSHeightMap
 from wms_image import WMSImage
+import configparser
+from typing import Dict, Any
 
 
 MAX_DISTANCE = 50000
@@ -14,7 +16,35 @@ class DistanceExceededError(Exception):
     pass
 
 
-def generate_data(config, lon1, lat1, lon2, lat2, spm, view_width):
+def generate_data(
+    config: configparser.ConfigParser,
+    lon1: float,
+    lat1: float,
+    lon2: float,
+    lat2: float,
+    spm: float,
+    view_width: float
+) -> Dict[str, Any]:
+    """
+    Generate dashboard session data.
+
+    Parameters
+    ----------
+    config : configparser.ConfigParser
+        Application configuration.
+    lon1 : float
+        Gateway longitude.
+    lat1 : float
+        Gateway latitude.
+    lon2 : float
+        Node longitude.
+    lat2 : float
+        Node latitude.
+    spm : float
+        Sample resolution in samples per meter.
+    view_width : float
+        Terrain view width in meters.
+    """
     geod = pyproj.Geod(ellps="WGS84")
     azi12, azi21, dist = geod.inv(lon1, lat1, lon2, lat2)
     if dist > MAX_DISTANCE:
