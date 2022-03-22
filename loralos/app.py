@@ -420,7 +420,7 @@ app.layout = build_layout(app, stations)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--port", type=int, default=80)
+    parser.add_argument("-p", "--port", type=int, default=int(config["dashboard"]["port"]))
     parser.add_argument("-d", "--debug", action="store_true")
     args = parser.parse_args()
 

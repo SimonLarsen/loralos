@@ -4,11 +4,12 @@ EXPOSE 80
 RUN mkdir /app
 WORKDIR /app
 
-ADD requirements.txt /app/
+COPY requirements.txt /app/
 RUN pip install -r requirements.txt
 
-COPY *.py config.ini stations.csv /app/
-COPY assets/* /app/assets/
+COPY loralos/*.py loralos/config.ini /app/
+COPY loralos/assets/* /app/assets/
+COPY loralos/data/* /app/data/
 
 ENTRYPOINT ["python"]
 CMD ["app.py", "-p", "80"]
