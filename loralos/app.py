@@ -39,6 +39,7 @@ app = dash.Dash(
     ],
     prevent_initial_callbacks=True,
 )
+server = app.server
 app.title = "LoRaWAN line of sight helper"
 
 stations = pd.read_csv(config["dashboard"]["stations"])
