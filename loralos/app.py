@@ -83,7 +83,7 @@ def update_data(
         return (
             None,
             "",
-            "Distance between gateway and node cannot exceed {MAX_DISTANCE} meters.",  # noqa: W505
+            f"Distance between gateway and node cannot exceed {MAX_DISTANCE} meters.",  # noqa: W505
             True,
         )
 
