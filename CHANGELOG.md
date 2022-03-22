@@ -1,6 +1,10 @@
 Changelog
 ---------
 
+## 0.0.6
+
+* Changed to use gunicorn for deployment.
+
 ## 0.0.5
 
 * Fresnel zone calculation now takes Earth curvature into account.
