@@ -10,7 +10,7 @@ Install the necessary Python packages defined in `requirements.txt`:
 pip install -r requirements.txt
 ```
 
-Then start the dashboard by running the `app.py` scripy:
+Then start the dashboard by running the `app.py` script:
 
 ```sh
 cd loralos
