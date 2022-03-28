@@ -1,6 +1,12 @@
 Changelog
 ---------
 
+## Development
+
+* Added custom location option to dashboard.
+* Fix error message formatting.
+* Increased gunicorn worker timeout.
+
 ## 0.0.6
 
 * Changed to use gunicorn for deployment.
