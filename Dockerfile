@@ -12,4 +12,4 @@ COPY loralos/assets/* /app/assets/
 COPY loralos/data/* /app/data/
 
 ENTRYPOINT ["gunicorn"]
-CMD ["-w", "1", "-b", "0.0.0.0:8080", "app:server"]
+CMD ["-w", "1", "-b", "0.0.0.0:8080", "-t", "1800", "app:server"]
