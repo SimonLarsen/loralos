@@ -87,6 +87,9 @@ def build_layout(app, stations: pd.DataFrame):
     )
 
     options_stations = [dict(label=id, value=id) for id in stations.station]
+    options_stations.insert(
+        0, dict(label="Custom location", value="__custom__")
+    )
     sidebar = dbc.Form(
         [
             html.H5("Session settings"),
@@ -94,19 +97,75 @@ def build_layout(app, stations: pd.DataFrame):
                 [
                     dbc.Label("Gateway location", html_for="gateway_id"),
                     dbc.Select(
-                        id="gateway_id", options=options_stations, value="FGV", required=True
+                        id="gateway_id",
+                        options=options_stations,
+                        value="FGV",
+                        required=True,
                     ),
                 ],
                 className="mb-3",
+            ),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.Input(
+                            id="gateway_lat",
+                            type="number",
+                            placeholder="Latitude",
+                            min=-90,
+                            max=90,
+                            disabled=True,
+                        ),
+                    ),
+                    dbc.Col(
+                        dbc.Input(
+                            id="gateway_lon",
+                            type="number",
+                            placeholder="Longitude",
+                            min=-90,
+                            max=90,
+                            disabled=True,
+                        ),
+                    ),
+                ],
+                className="mb-3 gx-3",
             ),
             html.Div(
                 [
                     dbc.Label("Node location", html_for="node_id"),
                     dbc.Select(
-                        id="node_id", options=options_stations, value="FGD", required=True
+                        id="node_id",
+                        options=options_stations,
+                        value="FGD",
+                        required=True,
                     ),
                 ],
                 className="mb-3",
+            ),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.Input(
+                            id="node_lat",
+                            type="number",
+                            placeholder="Latitude",
+                            min=-90,
+                            max=90,
+                            disabled=True,
+                        ),
+                    ),
+                    dbc.Col(
+                        dbc.Input(
+                            id="node_lon",
+                            type="number",
+                            placeholder="Longitude",
+                            min=-90,
+                            max=90,
+                            disabled=True,
+                        ),
+                    ),
+                ],
+                className="mb-3 gx-3",
             ),
             html.Div(
                 [
@@ -116,8 +175,8 @@ def build_layout(app, stations: pd.DataFrame):
                         min=0.2,
                         max=1.0,
                         value=0.8,
-                        marks={0.2: "20%", 0.6: "60%", 0.99: "100%"}
-                    )
+                        marks={0.2: "20%", 0.6: "60%", 0.99: "100%"},
+                    ),
                 ],
                 className="mb-3",
             ),
@@ -132,7 +191,7 @@ def build_layout(app, stations: pd.DataFrame):
                                 min=5,
                                 max=100,
                                 value=50,
-                                required=True
+                                required=True,
                             ),
                             dbc.InputGroupText("m"),
                         ]
@@ -236,10 +295,10 @@ def build_layout(app, stations: pd.DataFrame):
         fluid=True,
         children=dbc.Row(
             [
-                dbc.Col(sidebar, md=3, xl=2),
+                dbc.Col(sidebar, lg=3, xxl=2),
                 dbc.Col(
-                    md=9,
-                    xl=10,
+                    lg=9,
+                    xxl=10,
                     children=[
                         html.H5("Session info"),
                         html.Div(

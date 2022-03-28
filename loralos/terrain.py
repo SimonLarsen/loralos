@@ -27,7 +27,7 @@ def generate_data(
     lon2: float,
     lat2: float,
     spm: float,
-    view_width: float
+    view_width: float,
 ) -> Dict[str, Any]:
     """
     Generate dashboard session data.

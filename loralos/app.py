@@ -35,7 +35,7 @@ app = dash.Dash(
     external_stylesheets=[
         theme_url,
         dbc.icons.FONT_AWESOME,
-        "/assets/style.css"
+        "/assets/style.css",
     ],
     prevent_initial_callbacks=True,
 )
@@ -65,17 +65,38 @@ def google_maps_link(lat: float, lon: float) -> html.A:
     Output("sidebar_error", "is_open"),
     Input("session_update", "n_clicks"),
     State("gateway_id", "value"),
+    State("gateway_lat", "value"),
+    State("gateway_lon", "value"),
     State("node_id", "value"),
+    State("node_lat", "value"),
+    State("node_lon", "value"),
     State("spm", "value"),
     State("view_width", "value"),
 )
 def update_data(
-    n_clicks: int, gateway_id: str, node_id: str, spm: float, view_width: float
+    n_clicks: int,
+    gateway_id: str,
+    gateway_lat: float,
+    gateway_lon: float,
+    node_id: str,
+    node_lat: float,
+    node_lon: float,
+    spm: float,
+    view_width: float,
 ):
-    lon1, lat1 = stations.query("station == @gateway_id").iloc[0][
-        ["lon", "lat"]
-    ]
-    lon2, lat2 = stations.query("station == @node_id").iloc[0][["lon", "lat"]]
+    if gateway_id == "__custom__":
+        lon1, lat1 = gateway_lon, gateway_lat
+    else:
+        lon1, lat1 = stations.query("station == @gateway_id").iloc[0][
+            ["lon", "lat"]
+        ]
+
+    if node_id == "__custom__":
+        lon2, lat2 = node_lon, node_lat
+    else:
+        lon2, lat2 = stations.query("station == @node_id").iloc[0][
+            ["lon", "lat"]
+        ]
 
     try:
         data = generate_data(config, lon1, lat1, lon2, lat2, spm, view_width)
@@ -87,12 +108,7 @@ def update_data(
             True,
         )
     except ConnectionError:
-        return (
-            None,
-            "",
-            "Could not fetch terrain data.",
-            True
-        )
+        return (None, "", "Could not fetch terrain data.", True)
 
     return data, "", "", False
 
@@ -423,12 +439,34 @@ def update_collapse_graph_3d(enable_graph_3d):
     return enable_graph_3d
 
 
+@app.callback(
+    Output("gateway_lat", "disabled"),
+    Output("gateway_lon", "disabled"),
+    Input("gateway_id", "value"),
+)
+def update_gateway_latlon_disabled(gateway_id: str):
+    disabled = gateway_id != "__custom__"
+    return disabled, disabled
+
+
+@app.callback(
+    Output("node_lat", "disabled"),
+    Output("node_lon", "disabled"),
+    Input("node_id", "value"),
+)
+def update_node_latlon_disabled(node_id: str):
+    disabled = node_id != "__custom__"
+    return disabled, disabled
+
+
 app.layout = build_layout(app, stations)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--port", type=int, default=int(config["dashboard"]["port"]))
+    parser.add_argument(
+        "-p", "--port", type=int, default=int(config["dashboard"]["port"])
+    )
     parser.add_argument("-d", "--debug", action="store_true")
     args = parser.parse_args()
 
