@@ -1,7 +1,7 @@
 Changelog
 ---------
 
-## Development
+## 0.0.7
 
 * Added custom location option to dashboard.
 * Fix error message formatting.
