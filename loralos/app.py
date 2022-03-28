@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import pyproj
 from geo import los_height_range, los_height_single
-from terrain import generate_data, DistanceExceededError
+from terrain import generate_data, DistanceExceededError, ConnectionError
 from fresnel import fresnel_zone_radius
 from geometry import plane_mesh_indices, tube_mesh_indices
 
@@ -85,6 +85,13 @@ def update_data(
             "",
             f"Distance between gateway and node cannot exceed {MAX_DISTANCE} meters.",  # noqa: W505
             True,
+        )
+    except ConnectionError:
+        return (
+            None,
+            "",
+            "Could not fetch terrain data.",
+            True
         )
 
     return data, "", "", False

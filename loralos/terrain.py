@@ -16,6 +16,10 @@ class DistanceExceededError(Exception):
     pass
 
 
+class ConnectionError(Exception):
+    pass
+
+
 def generate_data(
     config: configparser.ConfigParser,
     lon1: float,
@@ -49,24 +53,6 @@ def generate_data(
     azi12, azi21, dist = geod.inv(lon1, lat1, lon2, lat2)
     if dist > MAX_DISTANCE:
         raise DistanceExceededError
-
-    heightmap = WCSHeightMap(
-        url=config["heightmap"]["url"],
-        token=config["heightmap"]["token"],
-        layer=config["heightmap"]["layer"],
-        tile_size=int(config["heightmap"]["tile_size"]),
-        resolution=int(config["heightmap"]["resolution"]),
-        cache_dir=WCS_CACHE_DIR.name,
-    )
-
-    image = WMSImage(
-        url=config["image"]["url"],
-        token=config["image"]["token"],
-        layer=config["image"]["layer"],
-        tile_size=int(config["image"]["tile_size"]),
-        resolution=int(config["image"]["resolution"]),
-        cache_dir=WMS_CACHE_DIR.name,
-    )
 
     # Number of samples from gateway to node
     npts_x = round(dist * spm)
@@ -106,8 +92,31 @@ def generate_data(
             np.linspace(-view_width / 2.0, view_width / 2.0, npts_y)
         )
 
-    out_height = heightmap.get_heights(out_lon, out_lat)
-    out_color = image.get_pixels(out_lon, out_lat)
+    try:
+        heightmap = WCSHeightMap(
+            url=config["heightmap"]["url"],
+            token=config["heightmap"]["token"],
+            layer=config["heightmap"]["layer"],
+            tile_size=int(config["heightmap"]["tile_size"]),
+            resolution=int(config["heightmap"]["resolution"]),
+            cache_dir=WCS_CACHE_DIR.name,
+        )
+        out_height = heightmap.get_heights(out_lon, out_lat)
+    except:
+        raise ConnectionError("Could not fetch terrain data.")
+
+    try:
+        image = WMSImage(
+            url=config["image"]["url"],
+            token=config["image"]["token"],
+            layer=config["image"]["layer"],
+            tile_size=int(config["image"]["tile_size"]),
+            resolution=int(config["image"]["resolution"]),
+            cache_dir=WMS_CACHE_DIR.name,
+        )
+        out_color = image.get_pixels(out_lon, out_lat)
+    except:
+        raise ConnectionError("Could not fetch aerial photos.")
 
     height_start = out_height[int(npts_y) // 2]
     height_end = out_height[int((npts_x - 1) * npts_y + npts_y // 2)]
