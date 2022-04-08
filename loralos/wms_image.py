@@ -1,7 +1,7 @@
 from owslib.wms import WebMapService
 import pyproj
 from PIL import Image
-from typing import Tuple, List
+from typing import Tuple, List, Dict, Any
 import os.path
 from pathlib import Path
 
@@ -13,7 +13,6 @@ class WMSImage:
     def __init__(
         self,
         url: str,
-        token: str,
         layer: str,
         cache_dir: str,
         style: str = "default",
@@ -21,9 +20,9 @@ class WMSImage:
         resolution: int = 500,
         format: str = "image/jpeg",
         crs: str = "epsg:25832",
+        headers: Dict[str, Any] = None,
     ) -> None:
         self.url = url
-        self.token = token
         self.layer = layer
         self.cache_dir = cache_dir
         self.style = style
@@ -31,8 +30,9 @@ class WMSImage:
         self.resolution = resolution
         self.format = format
         self.crs = crs
+        self.headers = headers
 
-        self.wms = WebMapService(self.url + "&token=" + self.token)
+        self.wms = WebMapService(self.url, headers=self.headers)
         self.trans = pyproj.Transformer.from_crs(
             "wgs84", self.crs, always_xy=True
         )

@@ -2,7 +2,7 @@ import pyproj
 from owslib.wcs import WebCoverageService
 import rasterio
 import os.path
-from typing import List
+from typing import List, Dict, Any
 from pathlib import Path
 
 
@@ -13,24 +13,24 @@ class WCSHeightMap:
     def __init__(
         self,
         url: str,
-        token: str,
         layer: str,
         cache_dir: str,
         tile_size: int = 1000,
         resolution: int = 500,
         format: str = "GTiff",
         crs: str = "epsg:25832",
+        headers: Dict[str, Any] = None,
     ):
         self.url = url
-        self.token = token
         self.layer = layer
         self.cache_dir = cache_dir
         self.tile_size = tile_size
         self.resolution = resolution
         self.format = format
         self.crs = crs
+        self.headers = headers
 
-        self.wcs = WebCoverageService(self.url + "&token=" + self.token)
+        self.wcs = WebCoverageService(self.url, headers=self.headers)
         self.trans = pyproj.Transformer.from_crs(
             "wgs84", self.crs, always_xy=True
         )

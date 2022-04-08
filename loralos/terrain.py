@@ -95,7 +95,7 @@ def generate_data(
     try:
         heightmap = WCSHeightMap(
             url=config["heightmap"]["url"],
-            token=config["heightmap"]["token"],
+            headers={"token": config["heightmap"]["token"]},
             layer=config["heightmap"]["layer"],
             tile_size=int(config["heightmap"]["tile_size"]),
             resolution=int(config["heightmap"]["resolution"]),
@@ -108,7 +108,7 @@ def generate_data(
     try:
         image = WMSImage(
             url=config["image"]["url"],
-            token=config["image"]["token"],
+            headers={"token": config["image"]["token"]},
             layer=config["image"]["layer"],
             tile_size=int(config["image"]["tile_size"]),
             resolution=int(config["image"]["resolution"]),
